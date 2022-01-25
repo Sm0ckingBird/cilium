@@ -226,6 +226,7 @@ ctx_adjust_hroom(struct xdp_md *ctx, const __s32 len_diff, const __u32 mode,
 			break;
 		case 20: /* struct iphdr */
 		case 8:  /* __u32 opt[2] */
+		case 4:	 /* __u32 opt */
 			if (data + move_len_v4 + len_diff <= data_end)
 				__bpf_memmove_fwd(data, data + len_diff,
 						  move_len_v4);

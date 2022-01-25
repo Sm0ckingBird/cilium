@@ -584,10 +584,12 @@ enum {
 #define	CB_IPCACHE_SRC_LABEL	CB_IFINDEX	/* Alias, non-overlapping */
 	CB_POLICY,
 #define	CB_ADDR_V6_2		CB_POLICY	/* Alias, non-overlapping */
+#define	CB_SRC_PORT		CB_POLICY	/* Alias, non-overlapping */
 	CB_NAT46_STATE,
 #define CB_NAT			CB_NAT46_STATE	/* Alias, non-overlapping */
 #define	CB_ADDR_V6_3		CB_NAT46_STATE	/* Alias, non-overlapping */
 #define	CB_FROM_HOST		CB_NAT46_STATE	/* Alias, non-overlapping */
+#define	CB_ADDR_V4_2		CB_NAT46_STATE	/* Alias, non-overlapping */
 	CB_CT_STATE,
 #define	CB_ADDR_V6_4		CB_CT_STATE	/* Alias, non-overlapping */
 #define	CB_ENCRYPT_DST		CB_CT_STATE	/* Alias, non-overlapping,

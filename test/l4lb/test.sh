@@ -43,13 +43,15 @@ nsenter -t $CONTROL_PLANE_PID -n /bin/sh -c "\
     ip a a "${SECOND_LB_NODE_IP}/24" dev l4lb-veth1 && \
     ip l s dev l4lb-veth1 up"
 
+kind load docker-image quay.io/jiangleetcode/cilium-test1:ipip91
+
 # Install Cilium as standalone L4LB
 helm install cilium ../../install/kubernetes/cilium \
     --wait \
     --namespace kube-system \
     --set debug.enabled=true \
-    --set image.repository="quay.io/${IMG_OWNER}/cilium-ci" \
-    --set image.tag="${IMG_TAG}" \
+    --set image.repository=quay.io/jiangleetcode/cilium-test1 \
+    --set image.tag=ipip91 \
     --set image.useDigest=false \
     --set image.pullPolicy=IfNotPresent \
     --set operator.enabled=false \

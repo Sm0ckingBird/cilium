@@ -350,9 +350,6 @@ func initKubeProxyReplacementOptions() (bool, error) {
 
 		if option.Config.NodePortMode == option.NodePortModeDSR &&
 			option.Config.LoadBalancerDSRDispatch == option.DSRDispatchIPIP {
-			if option.Config.DatapathMode != datapathOption.DatapathModeLBOnly {
-				return false, fmt.Errorf("DSR dispatch mode %s only supported for --%s=%s", option.Config.LoadBalancerDSRDispatch, option.DatapathMode, datapathOption.DatapathModeLBOnly)
-			}
 			if option.Config.NodePortAcceleration == option.NodePortAccelerationDisabled {
 				return false, fmt.Errorf("DSR dispatch mode %s currently only available under XDP acceleration", option.Config.LoadBalancerDSRDispatch)
 			}
