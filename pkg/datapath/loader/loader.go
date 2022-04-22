@@ -316,7 +316,7 @@ func (l *Loader) reloadDatapath(ctx context.Context, ep datapath.Endpoint, dirs 
 			// this log message should only represent failures with respect to
 			// loading the program.
 			if ctx.Err() == nil {
-				scopedLog.WithError(err).Warn("JoinEP: Failed to load program")
+				scopedLog.WithError(err).Warn("JoinEP: Failed to attach ingress program")
 			}
 			return err
 		}
@@ -333,7 +333,7 @@ func (l *Loader) reloadDatapath(ctx context.Context, ep datapath.Endpoint, dirs 
 				// this log message should only represent failures with respect to
 				// loading the program.
 				if ctx.Err() == nil {
-					scopedLog.WithError(err).Warn("JoinEP: Failed to load program")
+					scopedLog.WithError(err).Warn("JoinEP: Failed to attach egress program")
 				}
 				return err
 			}
