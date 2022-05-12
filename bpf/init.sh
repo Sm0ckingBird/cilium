@@ -501,7 +501,7 @@ for iface in $(ip -o -a l | awk '{print $2}' | cut -d: -f1 | cut -d@ -f1 | grep 
 			echo "Removing bpf_netdev.o from $where of $iface"
 			tc filter del dev "$iface" "$where" || true
 		fi
-		if tc filter show dev "$iface" "$where" | grep -q "bpf_host.o"; then
+		if tc filter show dev "$iface" "$where" | grep -q "bpf_host.o\|cilium"; then
 			echo "Removing bpf_host.o from $where of $iface"
 			tc filter del dev "$iface" "$where" || true
 		fi
