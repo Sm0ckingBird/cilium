@@ -43,7 +43,7 @@ var (
 
 type svcManager interface {
 	DeleteService(frontend lb.L3n4Addr) (bool, error)
-	UpsertService(*lb.SVC) (bool, lb.ID, error)
+	UpsertService(*lb.SVC) (bool, lb.ID, []lb.Backend, error)
 }
 
 type svcCache interface {
@@ -555,7 +555,7 @@ func (rpm *Manager) upsertService(config *LRPConfig, frontendMapping *feMapping)
 		TrafficPolicy: lb.SVCTrafficPolicyCluster,
 	}
 
-	if _, _, err := rpm.svcManager.UpsertService(p); err != nil {
+	if _, _, _, err := rpm.svcManager.UpsertService(p); err != nil {
 		log.WithError(err).Error("Error while inserting service in LB map")
 	}
 }

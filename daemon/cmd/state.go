@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	sysruntime "runtime"
 	"sync"
+	"syscall"
 
 	"github.com/cilium/cilium/pkg/controller"
 	"github.com/cilium/cilium/pkg/endpoint"
@@ -21,9 +23,11 @@ import (
 	"github.com/cilium/cilium/pkg/maps/ctmap"
 	"github.com/cilium/cilium/pkg/maps/lxcmap"
 	"github.com/cilium/cilium/pkg/option"
+	"github.com/docker/docker/client"
 
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -235,6 +239,140 @@ func (d *Daemon) restoreOldEndpoints(state *endpointRestoreState, clean bool) er
 	return nil
 }
 
+func attemptNamespaceResetAfterError(hostNSHandle netns.NsHandle) {
+	err := netns.Set(hostNSHandle)
+	if err != nil {
+		log.WithError(err).Warn("failed to set hostNetworkNamespace while resetting namespace after a previous error")
+	}
+
+	activeNetworkNamespaceHandle, err := netns.Get()
+	if err != nil {
+		log.WithError(err).Warn("failed to confirm activeNetworkNamespace while resetting namespace after a previous error")
+		return
+	}
+	log.WithFields(logrus.Fields{
+		"current namespace": activeNetworkNamespaceHandle.String(),
+	}).Debug("Current network namespace after revert namespace to host network namespace")
+
+	_ = activeNetworkNamespaceHandle.Close()
+}
+
+func (d *Daemon) configExternalIP(ep *endpoint.Endpoint, exIP net.IP) error {
+	sysruntime.LockOSThread()
+	defer sysruntime.UnlockOSThread()
+
+	origNameSpace, err := netns.Get()
+	if err != nil {
+		log.WithError(err).Warning("Unable to get current ns 1")
+		return err
+	}
+	defer origNameSpace.Close()
+
+	log.WithFields(logrus.Fields{
+		"orginal namespace": origNameSpace.String(),
+	}).Debug("Original network namespace")
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.WithError(err).Warning("Unable to create docker client")
+		return err
+	}
+	defer dockerClient.Close()
+
+	containerSpec, err := dockerClient.ContainerInspect(context.Background(),
+		ep.GetContainerID())
+	if err != nil {
+		log.WithError(err).Warning("Unable to inspect docker")
+		return err
+	}
+
+	pid := containerSpec.State.Pid
+
+	log.WithFields(logrus.Fields{
+		"pod pid": pid,
+	}).Debug("Configing vip")
+
+	endpointNamespaceHandle, err := netns.GetFromPid(pid)
+	if err != nil {
+		log.WithError(err).Warning("Unable to get pod namespace")
+		return err
+	}
+	defer endpointNamespaceHandle.Close()
+
+	// LINUX NAMESPACE SHIFT - It is important to note that from here
+	// until the end of the function (or until an error)
+	// all subsequent commands are executed from within the container's
+	// network namespace and NOT the host's namespace.
+	err = netns.Set(endpointNamespaceHandle)
+	if err != nil {
+		log.WithError(err).Warning("Unable to enter pod namespace")
+		return err
+	}
+
+	activeNetworkNamespaceHandle, err := netns.Get()
+	if err != nil {
+		log.WithError(err).Warning("Unable to get new pod namespace")
+		return err
+	}
+	log.WithFields(logrus.Fields{
+		"Container name space": activeNetworkNamespaceHandle.String(),
+	}).Debug("Entered new container namespace")
+
+	//_ = activeNetworkNamespaceHandle.Close()
+
+	// create an ipip tunnel interface inside the endpoint container
+	loopback, err := netlink.LinkByName("lo")
+	if err != nil {
+		attemptNamespaceResetAfterError(origNameSpace)
+		return err
+	}
+
+	// assign external IP to loopback interface
+	//ipbyteslice, err := exIP.MarshalText()
+	ip := net.IPNet{IP: exIP, Mask: net.IPv4Mask(255, 255, 255, 255)}
+	addr := &netlink.Addr{IPNet: &ip, Scope: syscall.RT_SCOPE_LINK}
+
+	log.WithFields(logrus.Fields{
+		"IP.ip":   ip.IP.String(),
+		"IP.mask": ip.Mask.String(),
+		"addr":    addr.String(),
+	}).Debug("Trying to assign exteranl IP to pod")
+
+	err = netlink.AddrAdd(loopback, addr)
+
+	if err != nil && err.Error() != "file exists" {
+		attemptNamespaceResetAfterError(origNameSpace)
+		log.WithError(err).Warn("failed to add ip address")
+		return err
+	}
+
+	_ = activeNetworkNamespaceHandle.Close()
+
+	log.WithFields(logrus.Fields{
+		"exteranl IP": exIP,
+		"Pod name":    ep.GetK8sPodName(),
+	}).Debug("Successfully assigned exteranl IP to pod")
+
+	//set back to orignal namespace.
+	err = netns.Set(origNameSpace)
+	if err != nil {
+		log.Warn("failed to set back to host namespace")
+		return err
+	}
+	activeNetworkNamespaceHandle, err = netns.Get()
+	if err != nil {
+		log.Debug("failed to get back host namespace")
+		return err
+	}
+	log.WithFields(logrus.Fields{
+		"current namespace": activeNetworkNamespaceHandle.String(),
+	}).Debug("Current network namespace after revert namespace to host network namespace")
+
+	_ = activeNetworkNamespaceHandle.Close()
+
+	return nil
+}
+
 func (d *Daemon) regenerateRestoredEndpoints(state *endpointRestoreState) (restoreComplete chan struct{}) {
 	restoreComplete = make(chan struct{}, 0)
 
@@ -277,6 +415,8 @@ func (d *Daemon) regenerateRestoredEndpoints(state *endpointRestoreState) (resto
 
 	for _, ep := range state.restored {
 		log.WithField(logfields.EndpointID, ep.ID).Info("Successfully restored endpoint. Scheduling regeneration")
+		svcs := d.k8sWatcher.GetDeepCopyExtIPServices()
+
 		go func(ep *endpoint.Endpoint, epRegenerated chan<- bool) {
 			if err := ep.RegenerateAfterRestore(); err != nil {
 				epRegenerated <- false
@@ -284,6 +424,21 @@ func (d *Daemon) regenerateRestoredEndpoints(state *endpointRestoreState) (resto
 			}
 			epRegenerated <- true
 		}(ep, epRegenerated)
+
+		//check if ep has an external IP
+		for _, svc := range svcs {
+			for _, backend := range svc.Backends {
+				if ep.IPv4.IP().Equal(backend.IP) {
+					log.WithFields(logrus.Fields{
+						"ep name":     ep.GetK8sPodName(),
+						"backend ip":  backend.IP,
+						"frontend ip": svc.Frontend.IP,
+					}).Debug("Found ep with srv!!!")
+					d.configExternalIP(ep, svc.Frontend.IP)
+				}
+			}
+
+		}
 	}
 
 	var endpointCleanupCompleted sync.WaitGroup

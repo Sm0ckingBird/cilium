@@ -738,6 +738,8 @@ func (d *Daemon) EndpointDeleted(ep *endpoint.Endpoint, conf endpoint.DeleteConf
 //
 // It is called after Daemon calls into d.endpointManager.AddEndpoint().
 func (d *Daemon) EndpointCreated(ep *endpoint.Endpoint) {
+	scopedLog := ep.Logger(daemonSubsys)
+	scopedLog.Debug("Jiang, at the end of ep creat")
 	d.SendNotification(monitorAPI.EndpointCreateMessage(ep))
 }
 

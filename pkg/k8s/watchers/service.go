@@ -9,6 +9,7 @@ import (
 	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/option"
+	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,6 +71,11 @@ func (k *K8sWatcher) servicesInit(k8sClient kubernetes.Interface, swgSvcs *lock.
 }
 
 func (k *K8sWatcher) addK8sServiceV1(svc *slim_corev1.Service, swg *lock.StoppableWaitGroup) error {
+	logger := log.WithFields(logrus.Fields{
+		"service": "get srv",
+	})
+	logger.Debug("Jiang, in addk8svc 2")
+
 	svcID := k.K8sSvcCache.UpdateService(svc, swg)
 	if option.Config.EnableLocalRedirectPolicy {
 		if svc.Spec.Type == slim_corev1.ServiceTypeClusterIP {

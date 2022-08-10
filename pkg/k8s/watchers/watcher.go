@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	sysruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cilium/cilium/pkg/cidr"
@@ -42,6 +44,9 @@ import (
 	"github.com/cilium/cilium/pkg/policy"
 	"github.com/cilium/cilium/pkg/policy/api"
 	"github.com/cilium/cilium/pkg/redirectpolicy"
+	"github.com/docker/docker/client"
+	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/types"
@@ -136,7 +141,9 @@ type policyRepository interface {
 
 type svcManager interface {
 	DeleteService(frontend loadbalancer.L3n4Addr) (bool, error)
-	UpsertService(*loadbalancer.SVC) (bool, loadbalancer.ID, error)
+	UpsertService(*loadbalancer.SVC) (bool, loadbalancer.ID,
+		[]loadbalancer.Backend, error)
+	GetDeepCopyExtIPServices() []*loadbalancer.SVC
 }
 
 type redirectPolicyManager interface {
@@ -291,6 +298,10 @@ func (k *K8sWatcher) blockWaitGroupToSyncResources(
 
 func (k *K8sWatcher) GetAPIGroups() []string {
 	return k.k8sAPIGroups.GetGroups()
+}
+
+func (k *K8sWatcher) GetDeepCopyExtIPServices() []*loadbalancer.SVC {
+	return k.svcManager.GetDeepCopyExtIPServices()
 }
 
 // WaitForCRDsToRegister will wait for the Cilium Operator to register the CRDs
@@ -748,6 +759,140 @@ func hashSVCMap(svcs []loadbalancer.SVC) map[string]loadbalancer.L3n4Addr {
 	return m
 }
 
+func attemptNamespaceResetAfterError(hostNSHandle netns.NsHandle) {
+	err := netns.Set(hostNSHandle)
+	if err != nil {
+		log.WithError(err).Warn("failed to set hostNetworkNamespace while resetting namespace after a previous error")
+	}
+
+	activeNetworkNamespaceHandle, err := netns.Get()
+	if err != nil {
+		log.WithError(err).Warn("failed to confirm activeNetworkNamespace while resetting namespace after a previous error")
+		return
+	}
+	log.WithFields(logrus.Fields{
+		"current namespace": activeNetworkNamespaceHandle.String(),
+	}).Debug("Current network namespace after revert namespace to host network namespace")
+
+	_ = activeNetworkNamespaceHandle.Close()
+}
+
+func (k *K8sWatcher) configExternalIP(ep *endpoint.Endpoint, exIP net.IP) error {
+	sysruntime.LockOSThread()
+	defer sysruntime.UnlockOSThread()
+
+	origNameSpace, err := netns.Get()
+	if err != nil {
+		log.WithError(err).Warning("Unable to get current ns 1")
+		return err
+	}
+	defer origNameSpace.Close()
+
+	log.WithFields(logrus.Fields{
+		"orginal namespace": origNameSpace.String(),
+	}).Debug("Original network namespace")
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.WithError(err).Warning("Unable to create docker client")
+		return err
+	}
+	defer dockerClient.Close()
+
+	containerSpec, err := dockerClient.ContainerInspect(context.Background(),
+		ep.GetContainerID())
+	if err != nil {
+		log.WithError(err).Warning("Unable to inspect docker")
+		return err
+	}
+
+	pid := containerSpec.State.Pid
+
+	log.WithFields(logrus.Fields{
+		"pod pid": pid,
+	}).Debug("Configing vip")
+
+	endpointNamespaceHandle, err := netns.GetFromPid(pid)
+	if err != nil {
+		log.WithError(err).Warning("Unable to get pod namespace")
+		return err
+	}
+	defer endpointNamespaceHandle.Close()
+
+	// LINUX NAMESPACE SHIFT - It is important to note that from here
+	// until the end of the function (or until an error)
+	// all subsequent commands are executed from within the container's
+	// network namespace and NOT the host's namespace.
+	err = netns.Set(endpointNamespaceHandle)
+	if err != nil {
+		log.WithError(err).Warning("Unable to enter pod namespace")
+		return err
+	}
+
+	activeNetworkNamespaceHandle, err := netns.Get()
+	if err != nil {
+		log.WithError(err).Warning("Unable to get new pod namespace")
+		return err
+	}
+	log.WithFields(logrus.Fields{
+		"Container name space": activeNetworkNamespaceHandle.String(),
+	}).Debug("Entered new container namespace")
+
+	//_ = activeNetworkNamespaceHandle.Close()
+
+	// create an ipip tunnel interface inside the endpoint container
+	loopback, err := netlink.LinkByName("lo")
+	if err != nil {
+		attemptNamespaceResetAfterError(origNameSpace)
+		return err
+	}
+
+	// assign external IP to loopback interface
+	//ipbyteslice, err := exIP.MarshalText()
+	ip := net.IPNet{IP: exIP, Mask: net.IPv4Mask(255, 255, 255, 255)}
+	addr := &netlink.Addr{IPNet: &ip, Scope: syscall.RT_SCOPE_LINK}
+
+	log.WithFields(logrus.Fields{
+		"IP.ip":   ip.IP.String(),
+		"IP.mask": ip.Mask.String(),
+		"addr":    addr.String(),
+	}).Debug("Trying to assign exteranl IP to pod")
+
+	err = netlink.AddrAdd(loopback, addr)
+
+	if err != nil && err.Error() != "file exists" {
+		attemptNamespaceResetAfterError(origNameSpace)
+		log.WithError(err).Warn("failed to add ip address")
+		return err
+	}
+
+	_ = activeNetworkNamespaceHandle.Close()
+
+	log.WithFields(logrus.Fields{
+		"exteranl IP": exIP,
+		"Pod name":    ep.GetK8sPodName(),
+	}).Debug("Successfully assigned exteranl IP to pod")
+
+	//set back to orignal namespace.
+	err = netns.Set(origNameSpace)
+	if err != nil {
+		log.Warn("failed to set back to host namespace")
+		return err
+	}
+	activeNetworkNamespaceHandle, err = netns.Get()
+	if err != nil {
+		log.Debug("failed to get back host namespace")
+		return err
+	}
+	log.WithFields(logrus.Fields{
+		"current namespace": activeNetworkNamespaceHandle.String(),
+	}).Debug("Current network namespace after revert namespace to host network namespace")
+
+	_ = activeNetworkNamespaceHandle.Close()
+
+	return nil
+}
+
 func (k *K8sWatcher) addK8sSVCs(svcID k8s.ServiceID, oldSvc, svc *k8s.Service, endpoints *k8s.Endpoints) error {
 	// Headless services do not need any datapath implementation
 	if svc.IsHeadless {
@@ -759,12 +904,26 @@ func (k *K8sWatcher) addK8sSVCs(svcID k8s.ServiceID, oldSvc, svc *k8s.Service, e
 		logfields.K8sNamespace: svcID.Namespace,
 	})
 
+	scopedLog.Debug("Jiang, in addk8svc 1")
+
 	svcs := datapathSVCs(svc, endpoints)
 	svcMap := hashSVCMap(svcs)
+
+	eps := k.endpointManager.GetEndpoints()
+	log.WithField("eps len", len(eps)).Debug("Jiang, in add svcxx")
+
+	for _, ep := range eps {
+		log.WithFields(logrus.Fields{
+			"ep name": ep.GetK8sPodName(),
+			"ep ip":   ep.IPv4,
+		}).Debug("Jiang in add svc, checking ep")
+	}
 
 	if oldSvc != nil {
 		// If we have oldService then we need to detect which frontends
 		// are no longer in the updated service and delete them in the datapath.
+
+		log.Debug("Jiang, oldSvc is not nil")
 
 		oldSVCs := datapathSVCs(oldSvc, endpoints)
 		oldSVCMap := hashSVCMap(oldSVCs)
@@ -796,8 +955,46 @@ func (k *K8sWatcher) addK8sSVCs(svcID k8s.ServiceID, oldSvc, svc *k8s.Service, e
 			Name:                      svcID.Name,
 			Namespace:                 svcID.Namespace,
 		}
-		if _, _, err := k.svcManager.UpsertService(p); err != nil {
+		scopedLog = log.WithFields(logrus.Fields{
+			"backends":      dpSvc.Backends,
+			"frontend":      dpSvc.Frontend,
+			"type":          dpSvc.Type,
+			"endpoint name": endpoints.String(),
+		})
+		scopedLog.Debug("Jiang, before upster service")
+
+		_, _, _, err := k.svcManager.UpsertService(p)
+		if err != nil {
 			scopedLog.WithError(err).Error("Error while inserting service in LB map")
+		}
+
+		eps := k.endpointManager.GetEndpoints()
+		log.WithField("eps len", len(eps)).Debug("Jiang, in add svcxx 2")
+		//log.WithField("newbackend len", len(newBackends)).Debug("Jiang, in add svcxx 3")
+		//if len(newBackends) > 0 {
+		//	log.WithField("newbackend ", newBackends[0]).Debug("Jiang, in add svcxx 3")
+		//}
+
+		if p.Type != loadbalancer.SVCTypeExternalIPs {
+			continue
+		}
+
+		for _, ep := range eps {
+			for _, backend := range p.Backends {
+				log.WithFields(logrus.Fields{
+					"ep name": ep.GetK8sPodName(),
+					"ep ip":   ep.IPv4,
+				}).Debug("Jiang in add svc, checking ep 2")
+
+				if ep.IPv4.IP().Equal(backend.L3n4Addr.IP) {
+					log.WithFields(logrus.Fields{
+						"ep name":     ep.GetK8sPodName(),
+						"backend ip":  backend.L3n4Addr.IP,
+						"frontend ip": p.Frontend.IP,
+					}).Debug("Jiang, Add svc, Found ep with srv 2!!!")
+					k.configExternalIP(ep, p.Frontend.IP)
+				}
+			}
 		}
 	}
 	return nil

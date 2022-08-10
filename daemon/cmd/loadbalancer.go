@@ -90,7 +90,7 @@ func (h *putServiceID) Handle(params PutServiceIDParams) middleware.Responder {
 		TrafficPolicy:       svcTrafficPolicy,
 		HealthCheckNodePort: svcHealthCheckNodePort,
 	}
-	created, id, err := h.svc.UpsertService(p)
+	created, id, _, err := h.svc.UpsertService(p)
 	if err == nil && id != frontend.ID {
 		return api.Error(PutServiceIDInvalidFrontendCode,
 			fmt.Errorf("the service provided is already registered with ID %d, please use that ID instead of %d",

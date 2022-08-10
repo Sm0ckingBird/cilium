@@ -249,6 +249,8 @@ func (k *K8sWatcher) updateK8sPodV1(oldK8sPod, newK8sPod *slim_corev1.Pod) error
 		"old-hostIP":           oldK8sPod.Status.PodIP,
 	})
 
+	logger.Debug("Jiang: in update k8s pod")
+
 	// In Kubernetes Jobs, Pods can be left in Kubernetes until the Job
 	// is deleted. If the Job is never deleted, Cilium will never receive a Pod
 	// delete event, causing the IP to be left in the ipcache.
@@ -310,16 +312,42 @@ func (k *K8sWatcher) updateK8sPodV1(oldK8sPod, newK8sPod *slim_corev1.Pod) error
 		}
 	}
 
-	// Nothing changed.
-	if !annotationsChanged && !labelsChanged {
-		return nil
-	}
-
 	podNSName := k8sUtils.GetObjNamespaceName(&newK8sPod.ObjectMeta)
 
 	podEP := k.endpointManager.LookupPodName(podNSName)
 	if podEP == nil {
 		log.WithField("pod", podNSName).Debugf("Endpoint not found running for the given pod")
+		return nil
+	}
+
+	// getdeepcopyexernal ip. compare each backend in extip and see if the
+	// pod is in ext ip. If so, config vip.
+	svcs := k.GetDeepCopyExtIPServices()
+	log.WithField("svcs len", len(svcs)).Debug("Jiang, in update pod")
+
+	//check if ep has an external IP
+	for _, svc := range svcs {
+		for _, backend := range svc.Backends {
+			log.WithFields(logrus.Fields{
+				"ep name":     podEP.GetK8sPodName(),
+				"ep ip":       podEP.IPv4.IP(),
+				"backend ip":  backend.IP,
+				"frontend ip": svc.Frontend.IP,
+			}).Debug("Jiang, Add pod!!!")
+
+			if podEP.IPv4.IP().Equal(backend.IP) {
+				log.WithFields(logrus.Fields{
+					"ep name":     podEP.GetK8sPodName(),
+					"backend ip":  backend.IP,
+					"frontend ip": svc.Frontend.IP,
+				}).Debug("Jiang, Add pod, Found ep with srv!!!")
+			}
+		}
+
+	}
+
+	// Nothing changed.
+	if !annotationsChanged && !labelsChanged {
 		return nil
 	}
 
@@ -633,7 +661,7 @@ func (k *K8sWatcher) upsertHostPortMapping(oldPod, newPod *slim_corev1.Pod, oldP
 			Namespace:           newPod.ObjectMeta.Namespace,
 		}
 
-		if _, _, err := k.svcManager.UpsertService(p); err != nil {
+		if _, _, _, err := k.svcManager.UpsertService(p); err != nil {
 			logger.WithError(err).Error("Error while inserting service in LB map")
 			return err
 		}

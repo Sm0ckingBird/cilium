@@ -1543,6 +1543,11 @@ func CheckHealth(ep *Endpoint) error {
 	}
 	_, err := netlink.LinkByName(iface)
 	if _, ok := err.(netlink.LinkNotFoundError); ok {
+		log.WithError(err).WithFields(logrus.Fields{
+			logfields.EndpointID:  ep.StringID(),
+			logfields.ContainerID: ep.GetShortContainerID(),
+			logfields.K8sPodName:  ep.GetK8sNamespaceAndPodName(),
+		}).Warning("Endpoint is invalid")
 		return fmt.Errorf("Endpoint is invalid: %w", err)
 	}
 	if err != nil {

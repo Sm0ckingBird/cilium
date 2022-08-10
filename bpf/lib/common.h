@@ -517,6 +517,7 @@ enum {
  * [1]: https://www.iana.org/assignments/ip-parameters/ip-parameters.xhtml
  */
 #define DSR_IPV4_OPT_32		0x9a080000
+#define DSR_IPV4_OPT_EXTIP_32	0x9b080000
 #define DSR_IPV4_OPT_MASK	0xffff0000
 #define DSR_IPV4_DPORT_MASK	0x0000ffff
 
@@ -596,6 +597,7 @@ enum {
 						 * Not used by xfrm.
 						 */
 #define	CB_CUSTOM_CALLS		CB_CT_STATE	/* Alias, non-overlapping */
+#define CB_SVC_TYPE		CB_CT_STATE	/* Alias, non-overlapping */
 };
 
 /* State values for NAT46 */

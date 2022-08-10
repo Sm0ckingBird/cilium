@@ -51,8 +51,9 @@ func (f *fakeSvcManager) DeleteService(lb.L3n4Addr) (bool, error) {
 	return true, nil
 }
 
-func (f *fakeSvcManager) UpsertService(*lb.SVC) (bool, lb.ID, error) {
-	return true, 1, nil
+func (f *fakeSvcManager) UpsertService(*lb.SVC) (bool, lb.ID,
+	[]lb.Backend, error) {
+	return true, 1, nil, nil
 }
 
 type fakePodStore struct {

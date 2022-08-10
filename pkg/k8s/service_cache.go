@@ -188,6 +188,12 @@ func (s *ServiceCache) GetNodeAddressing() datapath.NodeAddressing {
 // be parsed and a bool to indicate whether the service was changed in the
 // cache or not.
 func (s *ServiceCache) UpdateService(k8sSvc *slim_corev1.Service, swg *lock.StoppableWaitGroup) ServiceID {
+	logger := log.WithFields(logrus.Fields{
+		"service": "update srv",
+	})
+	logger.Debug("Jiang, in update svc cache")
+	// good for service change case.
+
 	svcID, newService := ParseService(k8sSvc, s.nodeAddressing)
 	if newService == nil {
 		return svcID
@@ -218,6 +224,7 @@ func (s *ServiceCache) UpdateService(k8sSvc *slim_corev1.Service, swg *lock.Stop
 			SWG:        swg,
 		}
 	}
+	logger.Debug("Jiang, in update svc cache, end")
 
 	return svcID
 }
