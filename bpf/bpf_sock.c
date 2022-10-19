@@ -225,8 +225,7 @@ int sock4_update_revnat(struct bpf_sock_addr *ctx __maybe_unused,
 static __always_inline bool
 sock4_skip_xlate(struct lb4_service *svc, __be32 address)
 {
-	if (lb4_svc_is_external_ip(svc) ||
-	    (lb4_svc_is_hostport(svc) && !is_v4_loopback(address))) {
+	if (lb4_svc_is_hostport(svc) && !is_v4_loopback(address)) {
 		struct remote_endpoint_info *info;
 
 		info = ipcache_lookup4(&IPCACHE_MAP, address,
