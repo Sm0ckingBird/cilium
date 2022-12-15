@@ -401,7 +401,11 @@ func (l *Loader) Reinitialize(ctx context.Context, o datapath.BaseProgramOwner, 
 	sysctl.ApplySettings(sysSettings)
 
 	// Datapath initialization
-	hostDev1, hostDev2, err := setupBaseDevice(devices, mode, deviceMTU)
+	hostmode := mode
+	if option.Config.LoadBalancerDSRDispatch == option.DSRDispatchIPIP {
+		hostmode = ipipMode
+	}
+	hostDev1, hostDev2, err := setupBaseDevice(devices, hostmode, deviceMTU)
 	if err != nil {
 		return fmt.Errorf("failed to setup base devices in mode %s: %w", mode, err)
 	}

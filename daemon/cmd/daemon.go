@@ -403,6 +403,7 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 	if externalIP == nil {
 		externalIP = node.GetIPv6()
 	}
+	withIPIP := option.Config.LoadBalancerDSRDispatch == "ipip"
 	// ExternalIP could be nil but we are covering that case inside NewConfiguration
 	mtuConfig = mtu.NewConfiguration(
 		authKeySize,
@@ -411,6 +412,7 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 		option.Config.EnableWireguard,
 		configuredMTU,
 		externalIP,
+		withIPIP,
 	)
 
 	nodeMngr, err := nodemanager.NewManager("all", dp.Node(), ipcache.IPIdentityCache, option.Config, nil, nil)

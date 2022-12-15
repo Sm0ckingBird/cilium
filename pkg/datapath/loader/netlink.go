@@ -26,6 +26,7 @@ const (
 	ipvlanMode = baseDeviceMode("ipvlan")
 	directMode = baseDeviceMode("direct")
 	tunnelMode = baseDeviceMode("tunnel")
+	ipipMode   = baseDeviceMode("ipip")
 
 	libbpfFixupMsg = "struct bpf_elf_map fixup performed due to size mismatch!"
 )
@@ -308,10 +309,14 @@ func setupBaseDevice(nativeDevs []netlink.Link, mode baseDeviceMode, mtu int) (n
 			return nil, nil, err
 		}
 
-		if err := netlink.LinkSetMTU(linkHost, mtu); err != nil {
+		hostmtu := mtu
+		if mode == ipipMode {
+			hostmtu = mtu + 28 //IP header 20 plus 8 byte IP option
+		}
+		if err := netlink.LinkSetMTU(linkHost, hostmtu); err != nil {
 			return nil, nil, err
 		}
-		if err := netlink.LinkSetMTU(linkNet, mtu); err != nil {
+		if err := netlink.LinkSetMTU(linkNet, hostmtu); err != nil {
 			return nil, nil, err
 		}
 

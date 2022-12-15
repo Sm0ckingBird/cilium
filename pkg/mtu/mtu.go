@@ -95,13 +95,14 @@ type Configuration struct {
 	encapEnabled     bool
 	encryptEnabled   bool
 	wireguardEnabled bool
+	ipipEnabled      bool
 }
 
 // NewConfiguration returns a new MTU configuration. The MTU can be manually
 // specified, otherwise it will be automatically detected. if encapEnabled is
 // true, the MTU is adjusted to account for encapsulation overhead for all
 // routes involved in node to node communication.
-func NewConfiguration(authKeySize int, encryptEnabled bool, encapEnabled bool, wireguardEnabled bool, mtu int, mtuDetectIP net.IP) Configuration {
+func NewConfiguration(authKeySize int, encryptEnabled bool, encapEnabled bool, wireguardEnabled bool, mtu int, mtuDetectIP net.IP, ipipEnabled bool) Configuration {
 	encryptOverhead := 0
 
 	if mtu == 0 {
@@ -132,6 +133,7 @@ func NewConfiguration(authKeySize int, encryptEnabled bool, encapEnabled bool, w
 		encapEnabled:     encapEnabled,
 		encryptEnabled:   encryptEnabled,
 		wireguardEnabled: wireguardEnabled,
+		ipipEnabled:      ipipEnabled,
 	}
 
 	if conf.tunnelMTU < 0 {
@@ -190,5 +192,10 @@ func (c *Configuration) GetDeviceMTU() int {
 		return EthernetMTU
 	}
 
-	return c.standardMTU
+	if c.ipipEnabled {
+		//with ipip, it has 20 B ipheader + 8 B ip option
+		return c.standardMTU - 28
+	} else {
+		return c.standardMTU
+	}
 }
