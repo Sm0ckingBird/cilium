@@ -4,9 +4,15 @@
 package loader
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
 	"fmt"
+	"hash"
+	"io"
 	"net"
+	"os"
+	"strings"
 
 	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/command/exec"
@@ -92,6 +98,56 @@ func replaceDatapath(ctx context.Context, ifName, objPath, progSec, progDirectio
 		return nil, fmt.Errorf("Failed to start bpffs map migration: %w", err)
 	}
 
+	ss := strings.Split(objPath, "/")
+	s := ss[len(ss)-1]
+	s3 := strings.Split(objPath, "_")
+	s4 := s3[0]
+	hashFile := s4 + "_" + s + ".hash"
+	var buf bytes.Buffer
+	var newHash, oldHash []byte
+	var hash hash.Hash
+	var err error
+	var bpfFile *os.File
+
+	old, err := os.Open(hashFile)
+	if err != nil {
+		goto LOAD
+	}
+	log.Debugf("bpfload: found old hash file, path %s", hashFile)
+	defer old.Close()
+
+	//oldHash, err = os.ReadFile(hashFile)
+	oldHash = make([]byte, 32)
+	_, err = old.Read(oldHash)
+	if err != nil {
+		goto LOAD
+	}
+
+	hash = md5.New()
+	bpfFile, err = os.Open(objPath)
+	if err != nil {
+		goto LOAD
+	}
+	defer bpfFile.Close()
+
+	_, err = io.Copy(hash, bpfFile)
+	if err != nil {
+		goto LOAD
+	}
+	newHash = hash.Sum(nil)
+
+	fmt.Fprintf(&buf, "%x", newHash)
+	log.Debugf("bpfload: old hash %x, new hash %x", oldHash, buf.Bytes())
+
+	if bytes.Equal(oldHash, buf.Bytes()) {
+		log.Debugf("bpfload: new bpf is the same as old one, skip loading bpf")
+		return nil, fmt.Errorf("bpfload: new bpf is the same as old one, skip loading bpf")
+	} else {
+		log.Debugf("bpfload: writing new hash to the file")
+		os.WriteFile(hashFile, buf.Bytes(), 0644)
+	}
+
+LOAD:
 	// FIXME: replace exec with native call
 	if xdp {
 		loaderProg = "ip"
