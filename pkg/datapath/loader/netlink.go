@@ -11,6 +11,7 @@ import (
 	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/command/exec"
 	"github.com/cilium/cilium/pkg/defaults"
+	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/mac"
 	"github.com/cilium/cilium/pkg/option"
@@ -55,6 +56,10 @@ func replaceQdisc(ifName string) error {
 
 	return nil
 }
+
+var (
+	mu lock.RWMutex
+)
 
 // replaceDatapath replaces the qdisc and BPF program for an endpoint or XDP program.
 //
@@ -102,6 +107,7 @@ func replaceDatapath(ctx context.Context, ifName, objPath, progSec, progDirectio
 
 	// If the iproute2 call below is successful, any 'pending' map pins will be removed.
 	// If not, any pending maps will be re-pinned back to their initial paths.
+	mu.Lock()
 	cmd := exec.CommandContext(ctx, loaderProg, args...).WithFilters(libbpfFixupMsg)
 	if _, err := cmd.CombinedOutput(log, true); err != nil {
 		// Program/object replacement unsuccessful, revert bpffs migration.
@@ -110,6 +116,7 @@ func replaceDatapath(ctx context.Context, ifName, objPath, progSec, progDirectio
 		}
 		return nil, fmt.Errorf("Failed to load prog with %s: %w", loaderProg, err)
 	}
+	mu.Unlock()
 
 	finalize := func() {
 		l := log.WithField("device", ifName).WithField("objPath", objPath)
