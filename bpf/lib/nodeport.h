@@ -2001,6 +2001,8 @@ static __always_inline int nodeport_lb4(struct __ctx_buff *ctx,
 	bool externalip_svc;
 	__u32 monitor __maybe_unused = 0;
 	unsigned int backendip __maybe_unused = 0;
+	__be32 org_daddr __maybe_unused = 0;
+	__be32 sum __maybe_unused = 0;
 
 	cilium_capture_in(ctx);
 
@@ -2010,6 +2012,7 @@ static __always_inline int nodeport_lb4(struct __ctx_buff *ctx,
 	tuple.nexthdr = ip4->protocol;
 	tuple.daddr = ip4->daddr;
 	tuple.saddr = ip4->saddr;
+	org_daddr = tuple.daddr;
 
 	l4_off = l3_off + ipv4_hdrlen(ip4);
 
@@ -2025,7 +2028,7 @@ static __always_inline int nodeport_lb4(struct __ctx_buff *ctx,
 
 	svc = lb4_lookup_service(&key, false);
 	if (svc) {
-#if DSR_ENCAP_MODE == DSR_ENCAP_IPIP
+#if DSR_ENCAP_MODE == DSR_ENCAP_IPIP && defined (ENABLE_LBONLY)
 		const bool skip_l3_xlate = true;
 #else
 		const bool skip_l3_xlate = false;
@@ -2163,6 +2166,18 @@ redo_local:
 			ctx_store_meta(ctx, CB_HINT,
 				       ((__u32)tuple.sport << 16) | tuple.dport);
 			ctx_store_meta(ctx, CB_ADDR_V4, tuple.daddr);
+#ifndef ENABLE_LBONLY
+			/* tuple.daddr is the backend ip now. For non LB-only IPIP case,
+				restore inner IP daddr as org daddr */
+			sum = csum_diff(&tuple.daddr, 4, &org_daddr, 4, 0);
+			ret = ctx_store_bytes(ctx, l3_off + offsetof(struct iphdr, daddr),
+					&org_daddr, 4, 0);
+			if (ret < 0)
+				return DROP_WRITE_ERROR;
+			if (l3_csum_replace(ctx, l3_off + offsetof(struct iphdr, check),
+					0, sum, 0) < 0)
+				return DROP_CSUM_L3;
+#endif
 
 #elif DSR_ENCAP_MODE == DSR_ENCAP_NONE
 			ctx_store_meta(ctx, CB_PORT, key.dport);
