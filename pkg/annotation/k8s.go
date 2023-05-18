@@ -49,6 +49,11 @@ const (
 	// sharing local endpoints.
 	SharedService = Prefix + "/shared-service"
 
+	// FullPortMapping is true means all the port are exposed to the outside of clusters.
+	// Datapath will not check L4 ports when lookup a service
+	// Default is false
+	FullPortMapping = Prefix + "/full-port-mapping"
+
 	// ProxyVisibility is the annotation name used to indicate whether proxy
 	// visibility should be enabled for a given pod (i.e., all traffic for the
 	// pod is redirected to the proxy for the given port / protocol in the

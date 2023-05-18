@@ -102,7 +102,7 @@ func (svc *svcInfo) requireNodeLocalBackends(frontend lb.L3n4AddrID) (bool, bool
 	switch svc.svcType {
 	case lb.SVCTypeLocalRedirect:
 		return false, true
-	case lb.SVCTypeNodePort, lb.SVCTypeLoadBalancer, lb.SVCTypeExternalIPs:
+	case lb.SVCTypeNodePort, lb.SVCTypeLoadBalancer, lb.SVCTypeExternalIPs, lb.SVCTypeFullPortsMapping:
 		if svc.svcTrafficPolicy == lb.SVCTrafficPolicyLocal {
 			return true, frontend.Scope == lb.ScopeExternal
 		}
@@ -348,6 +348,8 @@ func (s *Service) UpsertService(params *lb.SVC) (bool, lb.ID, []lb.Backend, erro
 		err := fmt.Errorf("Unable to upsert service %s as IPv4 is disabled", params.Frontend.L3n4Addr.String())
 		return false, lb.ID(0), []lb.Backend{}, err
 	}
+
+	//update service type to fullportmapping if necessary
 
 	// If needed, create svcInfo and allocate service ID
 	svc, new, prevSessionAffinity, prevLoadBalancerSourceRanges, err :=
@@ -660,6 +662,9 @@ func (s *Service) createSVCInfoIfNotExist(p *lb.SVC) (*svcInfo, bool, bool,
 		}
 		s.svcByID[p.Frontend.ID] = svc
 		s.svcByHash[hash] = svc
+		if svc.svcType == lb.SVCTypeFullPortsMapping {
+			svc.frontend.L3n4Addr.Port = 0 //full ports mapping use 0 as the a special port
+		}
 	} else {
 		// Local Redirect Policies with service matcher would have same frontend
 		// as the service clusterIP type. In such cases, if a Local redirect service

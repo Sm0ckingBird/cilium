@@ -233,6 +233,12 @@ bool lb6_svc_is_external_ip(const struct lb6_service *svc __maybe_unused)
 }
 
 static __always_inline
+bool lb4_svc_is_full_ports_mapping(const struct lb4_service *svc __maybe_unused)
+{
+	return svc->flags2 & SVC_FLAG_FULLPORTSMAPPING;
+}
+
+static __always_inline
 bool lb4_svc_is_hostport(const struct lb4_service *svc __maybe_unused)
 {
 	return svc->flags & SVC_FLAG_HOSTPORT;
@@ -1051,7 +1057,8 @@ static __always_inline
 struct lb4_service *lb4_lookup_service(struct lb4_key *key,
 				       const bool scope_switch)
 {
-	struct lb4_service *svc;
+	struct lb4_service *svc, *svc2;
+	unsigned short org_port = 88;
 
 	key->scope = LB_LOOKUP_SCOPE_EXT;
 	key->backend_slot = 0;
@@ -1063,6 +1070,23 @@ struct lb4_service *lb4_lookup_service(struct lb4_key *key,
 		svc = map_lookup_elem(&LB4_SERVICES_MAP_V2, key);
 		if (svc && svc->count)
 			return svc;
+	}
+
+	/*try again with full ports mapping*/
+	org_port = key->dport;
+	key->dport = 0;
+	svc2 = map_lookup_elem(&LB4_SERVICES_MAP_V2, key);
+	if (svc2) {
+		if (!scope_switch || !lb4_svc_is_local_scope(svc2)) {
+			key->dport = org_port;
+			return svc2->count ? svc2 : NULL;
+		}
+		key->scope = LB_LOOKUP_SCOPE_INT;
+		svc2 = map_lookup_elem(&LB4_SERVICES_MAP_V2, key);
+		if (svc2 && svc2->count) {
+			key->dport = org_port;
+			return svc2;
+		}
 	}
 
 	return NULL;
@@ -1093,13 +1117,21 @@ struct lb4_service *__lb4_lookup_backend_slot(struct lb4_key *key)
 
 static __always_inline
 struct lb4_service *lb4_lookup_backend_slot(struct __ctx_buff *ctx __maybe_unused,
-					    struct lb4_key *key, __u16 slot)
+					    struct lb4_key *key, __u16 slot,
+					    bool full_port)
 {
 	struct lb4_service *svc;
+	unsigned short org_port = key->dport;
 
 	key->backend_slot = slot;
 	cilium_dbg_lb(ctx, DBG_LB4_LOOKUP_BACKEND_SLOT, key->backend_slot, key->dport);
+
+	if(full_port)
+		key->dport = 0;
+
 	svc = __lb4_lookup_backend_slot(key);
+	if(full_port)
+		key->dport = org_port;
 	if (svc)
 		return svc;
 
@@ -1117,7 +1149,9 @@ lb4_select_backend_id(struct __ctx_buff *ctx,
 		      const struct lb4_service *svc)
 {
 	__u32 slot = (get_prandom_u32() % svc->count) + 1;
-	struct lb4_service *be = lb4_lookup_backend_slot(ctx, key, slot);
+	bool full_port = lb4_svc_is_full_ports_mapping(svc);
+
+	struct lb4_service *be = lb4_lookup_backend_slot(ctx, key, slot, full_port);
 
 	return be ? be->backend_id : 0;
 }
@@ -1152,7 +1186,7 @@ lb4_xlate(struct __ctx_buff *ctx, __be32 *new_daddr, __be32 *new_saddr __maybe_u
 	  __be32 *old_saddr __maybe_unused, __u8 nexthdr __maybe_unused, int l3_off,
 	  int l4_off, struct csum_offset *csum_off, struct lb4_key *key,
 	  const struct lb4_backend *backend __maybe_unused, bool has_l4_header,
-	  const bool skip_l3_xlate)
+	  const bool skip_l3_xlate, const bool skip_l4_xlate)
 {
 	__be32 sum;
 	int ret;
@@ -1188,6 +1222,9 @@ lb4_xlate(struct __ctx_buff *ctx, __be32 *new_daddr, __be32 *new_saddr __maybe_u
 	}
 
 l4_xlate:
+	if (skip_l4_xlate)
+		return CTX_ACT_OK;
+
 	if (likely(backend->port) && key->dport != backend->port &&
 	    (nexthdr == IPPROTO_TCP || nexthdr == IPPROTO_UDP) &&
 	    has_l4_header) {
@@ -1317,6 +1354,7 @@ static __always_inline int lb4_local(const void *map, struct __ctx_buff *ctx,
 	struct lb4_backend *backend;
 	__u32 backend_id = 0;
 	int ret;
+	bool skip_l4_xlate = false;
 #ifdef ENABLE_SESSION_AFFINITY
 	union lb4_affinity_client_id client_id = {
 		.client_ip = saddr,
@@ -1447,10 +1485,12 @@ update_state:
 #endif
 		tuple->daddr = backend->address;
 
+	if (lb4_svc_is_full_ports_mapping(svc))
+		skip_l4_xlate = true;
 	return lb_skip_l4_dnat() ? CTX_ACT_OK :
 	       lb4_xlate(ctx, &new_daddr, &new_saddr, &saddr,
 			 tuple->nexthdr, l3_off, l4_off, csum_off, key,
-			 backend, has_l4_header, skip_l3_xlate);
+			 backend, has_l4_header, skip_l3_xlate, skip_l4_xlate);
 drop_no_service:
 		tuple->flags = flags;
 		return DROP_NO_SERVICE;

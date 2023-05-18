@@ -3807,7 +3807,8 @@ func init() {
                 "ExternalIPs",
                 "HostPort",
                 "LoadBalancer",
-                "LocalRedirect"
+                "LocalRedirect",
+                "FullPotsMapping"
               ]
             }
           }
@@ -8497,7 +8498,8 @@ func init() {
                 "ExternalIPs",
                 "HostPort",
                 "LoadBalancer",
-                "LocalRedirect"
+                "LocalRedirect",
+                "FullPortsMapping"
               ]
             }
           }
@@ -8546,7 +8548,8 @@ func init() {
             "ExternalIPs",
             "HostPort",
             "LoadBalancer",
-            "LocalRedirect"
+            "LocalRedirect",
+            "FullPortsMapping"
           ]
         }
       }

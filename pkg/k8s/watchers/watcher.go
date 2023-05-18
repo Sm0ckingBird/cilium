@@ -716,7 +716,17 @@ func datapathSVCs(svc *k8s.Service, endpoints *k8s.Endpoints) (svcs []loadbalanc
 	}
 
 	for _, k8sExternalIP := range svc.K8sExternalIPs {
-		dpSVC := genCartesianProduct(k8sExternalIP, svc.TrafficPolicy, loadbalancer.SVCTypeExternalIPs, clusterIPPorts, endpoints)
+		svcType := loadbalancer.SVCTypeExternalIPs
+
+		if svc.Type == loadbalancer.SVCTypeFullPortsMapping {
+			svcType = loadbalancer.SVCTypeFullPortsMapping
+			for fePortName, fePort := range clusterIPPorts {
+				fePort.Port = 0
+				clusterIPPorts[fePortName] = fePort
+			}
+		}
+
+		dpSVC := genCartesianProduct(k8sExternalIP, svc.TrafficPolicy, svcType, clusterIPPorts, endpoints)
 		svcs = append(svcs, dpSVC...)
 	}
 

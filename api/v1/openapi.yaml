@@ -2549,6 +2549,7 @@ definitions:
             - HostPort
             - LoadBalancer
             - LocalRedirect
+            - FullPortsMapping
           trafficPolicy:
             description: Service traffic policy
             type: string

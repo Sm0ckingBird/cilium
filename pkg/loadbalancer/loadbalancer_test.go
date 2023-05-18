@@ -290,6 +290,14 @@ func TestNewSvcFlag(t *testing.T) {
 			},
 			want: serviceFlagLocalRedirect | serviceFlagRoutable,
 		},
+		{
+			args: args{
+				svcType:     SVCTypeFullPortsMapping,
+				svcLocal:    false,
+				svcRoutable: true,
+			},
+			want: serviceFlagFullPortsMapping | serviceFlagRoutable,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

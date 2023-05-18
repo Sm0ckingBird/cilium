@@ -645,6 +645,7 @@ enum {
 /* Service flags (lb{4,6}_service->flags2) */
 enum {
 	SVC_FLAG_LOCALREDIRECT = (1 << 0),  /* local redirect */
+	SVC_FLAG_FULLPORTSMAPPING = (1 << 1), /*full ports mapping */
 };
 
 struct ipv6_ct_tuple {

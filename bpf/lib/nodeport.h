@@ -1992,7 +1992,8 @@ skip_service_lookup:
 		ep_tail_call(ctx, CILIUM_CALL_IPV4_NODEPORT_NAT);
 		return DROP_MISSED_TAIL_CALL;
 	}
-	externalip_svc = lb4_svc_is_external_ip(svc);
+	externalip_svc = lb4_svc_is_external_ip(svc) || 
+			 lb4_svc_is_full_ports_mapping(svc);
 
 	backend_local = __lookup_ip4_endpoint(tuple.daddr);
 	if (!backend_local && lb4_svc_is_hostport(svc))

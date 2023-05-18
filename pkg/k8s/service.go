@@ -44,6 +44,14 @@ func getAnnotationShared(svc *slim_corev1.Service) bool {
 	return getAnnotationIncludeExternal(svc)
 }
 
+func getAnnotationFullPortMapping(svc *slim_corev1.Service) bool {
+	if value, ok := svc.ObjectMeta.Annotations[annotation.FullPortMapping]; ok {
+		return strings.ToLower(value) == "true"
+	}
+
+	return false
+}
+
 func getAnnotationTopologyAwareHints(svc *slim_corev1.Service) bool {
 	if value, ok := svc.ObjectMeta.Annotations[annotationTopologyAwareHints]; ok {
 		return strings.ToLower(value) == "auto"
@@ -155,6 +163,10 @@ func ParseService(svc *slim_corev1.Service, nodeAddressing datapath.NodeAddressi
 
 	svcInfo.IncludeExternal = getAnnotationIncludeExternal(svc)
 	svcInfo.Shared = getAnnotationShared(svc)
+	svcInfo.FullPortMapping = getAnnotationFullPortMapping(svc)
+	if svcInfo.FullPortMapping {
+		svcInfo.Type = loadbalancer.SVCTypeFullPortsMapping
+	}
 
 	if svc.Spec.SessionAffinity == slim_corev1.ServiceAffinityClientIP {
 		svcInfo.SessionAffinity = true
@@ -291,6 +303,11 @@ type Service struct {
 	// Shared is true when the service should be exposed/shared to other clusters
 	Shared bool
 
+	// FullPortMapping is true means all the port are exposed to the outside of clusters.
+	// Datapath will not check L4 ports when lookup a service
+	// +deepequal-gen=false
+	FullPortMapping bool
+
 	// TrafficPolicy controls how backends are selected. If set to "Local", only
 	// node-local backends are chosen
 	TrafficPolicy loadbalancer.SVCTrafficPolicy
@@ -391,6 +408,10 @@ func (s *Service) DeepEqual(other *Service) bool {
 				return false
 			}
 		}
+	}
+
+	if s.FullPortMapping != other.FullPortMapping {
+		return false
 	}
 
 	return s.deepEqual(other)

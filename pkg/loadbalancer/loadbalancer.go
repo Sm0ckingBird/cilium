@@ -17,13 +17,14 @@ import (
 type SVCType string
 
 const (
-	SVCTypeNone          = SVCType("NONE")
-	SVCTypeHostPort      = SVCType("HostPort")
-	SVCTypeClusterIP     = SVCType("ClusterIP")
-	SVCTypeNodePort      = SVCType("NodePort")
-	SVCTypeExternalIPs   = SVCType("ExternalIPs")
-	SVCTypeLoadBalancer  = SVCType("LoadBalancer")
-	SVCTypeLocalRedirect = SVCType("LocalRedirect")
+	SVCTypeNone             = SVCType("NONE")
+	SVCTypeHostPort         = SVCType("HostPort")
+	SVCTypeClusterIP        = SVCType("ClusterIP")
+	SVCTypeNodePort         = SVCType("NodePort")
+	SVCTypeExternalIPs      = SVCType("ExternalIPs")
+	SVCTypeLoadBalancer     = SVCType("LoadBalancer")
+	SVCTypeLocalRedirect    = SVCType("LocalRedirect")
+	SVCTypeFullPortsMapping = SVCType("FullPortsMapping")
 )
 
 // SVCTrafficPolicy defines which backends are chosen
@@ -40,16 +41,17 @@ const (
 type ServiceFlags uint16
 
 const (
-	serviceFlagNone            = 0
-	serviceFlagExternalIPs     = 1 << 0
-	serviceFlagNodePort        = 1 << 1
-	serviceFlagLocalScope      = 1 << 2
-	serviceFlagHostPort        = 1 << 3
-	serviceFlagSessionAffinity = 1 << 4
-	serviceFlagLoadBalancer    = 1 << 5
-	serviceFlagRoutable        = 1 << 6
-	serviceFlagSourceRange     = 1 << 7
-	serviceFlagLocalRedirect   = 1 << 8
+	serviceFlagNone             = 0
+	serviceFlagExternalIPs      = 1 << 0
+	serviceFlagNodePort         = 1 << 1
+	serviceFlagLocalScope       = 1 << 2
+	serviceFlagHostPort         = 1 << 3
+	serviceFlagSessionAffinity  = 1 << 4
+	serviceFlagLoadBalancer     = 1 << 5
+	serviceFlagRoutable         = 1 << 6
+	serviceFlagSourceRange      = 1 << 7
+	serviceFlagLocalRedirect    = 1 << 8
+	serviceFlagFullPortsMapping = 1 << 9
 )
 
 type SvcFlagParam struct {
@@ -75,6 +77,8 @@ func NewSvcFlag(p *SvcFlagParam) ServiceFlags {
 		flags |= serviceFlagHostPort
 	case SVCTypeLocalRedirect:
 		flags |= serviceFlagLocalRedirect
+	case SVCTypeFullPortsMapping:
+		flags |= serviceFlagFullPortsMapping
 	}
 
 	if p.SvcLocal {
@@ -106,6 +110,8 @@ func (s ServiceFlags) SVCType() SVCType {
 		return SVCTypeHostPort
 	case s&serviceFlagLocalRedirect != 0:
 		return SVCTypeLocalRedirect
+	case s&serviceFlagFullPortsMapping != 0:
+		return SVCTypeFullPortsMapping
 	default:
 		return SVCTypeClusterIP
 	}
