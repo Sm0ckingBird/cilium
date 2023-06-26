@@ -837,6 +837,8 @@ func initializeFlags() {
 
 	flags.Duration(option.CTMapEntriesTimeoutFINName, 10*time.Second, "Teardown timeout for entries in TCP CT table")
 	option.BindEnv(option.CTMapEntriesTimeoutFINName)
+	flags.Duration(option.CTMapEntriesTimeoutHalfCloseName, 300*time.Second, "Teardown timeout for entries in TCP CT table in half close state")
+	option.BindEnv(option.CTMapEntriesTimeoutHalfCloseName)
 
 	flags.Duration(option.MonitorAggregationInterval, 5*time.Second, "Monitor report interval when monitor aggregation is enabled")
 	option.BindEnv(option.MonitorAggregationInterval)

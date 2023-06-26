@@ -169,6 +169,12 @@ static __always_inline bool ct_entry_alive(const struct ct_entry *entry)
 	return !entry->rx_closing || !entry->tx_closing;
 }
 
+static __always_inline bool ct_entry_halfclose(const struct ct_entry *entry)
+{
+	return (entry->rx_closing && !entry->tx_closing) ||
+		(!entry->rx_closing && entry->tx_closing);
+}
+
 /* Helper for holding 2nd service entry alive in nodeport case. */
 static __always_inline bool __ct_entry_keep_alive(const void *map,
 						  const void *tuple)
@@ -208,7 +214,7 @@ static __always_inline __u8 __ct_lookup(const void *map, struct __ctx_buff *ctx,
 	entry = map_lookup_elem(map, tuple);
 	if (entry) {
 		cilium_dbg(ctx, DBG_CT_MATCH, entry->lifetime, entry->rev_nat_index);
-		if (ct_entry_alive(entry))
+		if (ct_entry_alive(entry) && !ct_entry_halfclose(entry))
 			*monitor = ct_update_timeout(entry, is_tcp, dir, seen_flags);
 		if (ct_state) {
 			ct_state->rev_nat_index = entry->rev_nat_index;
@@ -259,9 +265,22 @@ static __always_inline __u8 __ct_lookup(const void *map, struct __ctx_buff *ctx,
 				entry->rx_closing = 1;
 				entry->tx_closing = 1;
 			} else if (dir == CT_INGRESS) {
+				__u32 lifetime = 0;
 				entry->rx_closing = 1;
+#ifdef NEEDS_TIMEOUT
+				lifetime = bpf_sec_to_mono(CT_HALFCLOSE_LIFETIME_TCP) +
+					   bpf_mono_now();
+				WRITE_ONCE(entry->lifetime, lifetime);
+#endif
+
 			} else {
+				__u32 lifetime = 0;
 				entry->tx_closing = 1;
+#ifdef NEEDS_TIMEOUT
+				lifetime = bpf_sec_to_mono(CT_HALFCLOSE_LIFETIME_TCP) +
+					   bpf_mono_now();
+				WRITE_ONCE(entry->lifetime, lifetime);
+#endif
 			}
 
 			*monitor = TRACE_PAYLOAD_LEN;

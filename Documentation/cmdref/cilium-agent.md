@@ -29,6 +29,7 @@ cilium-agent [flags]
       --bpf-ct-timeout-regular-any duration                  Timeout for entries in non-TCP CT table (default 1m0s)
       --bpf-ct-timeout-regular-tcp duration                  Timeout for established entries in TCP CT table (default 6h0m0s)
       --bpf-ct-timeout-regular-tcp-fin duration              Teardown timeout for entries in TCP CT table (default 10s)
+      --bpf-ct-timeout-regular-tcp-half-close duration       Teardown timeout for entries in TCP CT table in half close state (default 5m0s)
       --bpf-ct-timeout-regular-tcp-syn duration              Establishment timeout for entries in TCP CT table (default 1m0s)
       --bpf-ct-timeout-service-any duration                  Timeout for service entries in non-TCP CT table (default 1m0s)
       --bpf-ct-timeout-service-tcp duration                  Timeout for established service entries in TCP CT table (default 6h0m0s)

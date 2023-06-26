@@ -524,12 +524,13 @@ const (
 	CTMapEntriesGlobalAnyName = "bpf-ct-global-any-max"
 
 	// CTMapEntriesTimeout* name option and default value mappings
-	CTMapEntriesTimeoutSYNName    = "bpf-ct-timeout-regular-tcp-syn"
-	CTMapEntriesTimeoutFINName    = "bpf-ct-timeout-regular-tcp-fin"
-	CTMapEntriesTimeoutTCPName    = "bpf-ct-timeout-regular-tcp"
-	CTMapEntriesTimeoutAnyName    = "bpf-ct-timeout-regular-any"
-	CTMapEntriesTimeoutSVCTCPName = "bpf-ct-timeout-service-tcp"
-	CTMapEntriesTimeoutSVCAnyName = "bpf-ct-timeout-service-any"
+	CTMapEntriesTimeoutSYNName       = "bpf-ct-timeout-regular-tcp-syn"
+	CTMapEntriesTimeoutFINName       = "bpf-ct-timeout-regular-tcp-fin"
+	CTMapEntriesTimeoutTCPName       = "bpf-ct-timeout-regular-tcp"
+	CTMapEntriesTimeoutAnyName       = "bpf-ct-timeout-regular-any"
+	CTMapEntriesTimeoutSVCTCPName    = "bpf-ct-timeout-service-tcp"
+	CTMapEntriesTimeoutSVCAnyName    = "bpf-ct-timeout-service-any"
+	CTMapEntriesTimeoutHalfCloseName = "bpf-ct-timeout-regular-tcp-half-close"
 
 	// NATMapEntriesGlobalDefault holds the default size of the NAT map
 	// and is 2/3 of the full CT size as a heuristic
@@ -1317,12 +1318,13 @@ type DaemonConfig struct {
 	CTMapEntriesGlobalAny int
 
 	// CTMapEntriesTimeout* values configured by the user.
-	CTMapEntriesTimeoutTCP    time.Duration
-	CTMapEntriesTimeoutAny    time.Duration
-	CTMapEntriesTimeoutSVCTCP time.Duration
-	CTMapEntriesTimeoutSVCAny time.Duration
-	CTMapEntriesTimeoutSYN    time.Duration
-	CTMapEntriesTimeoutFIN    time.Duration
+	CTMapEntriesTimeoutTCP       time.Duration
+	CTMapEntriesTimeoutAny       time.Duration
+	CTMapEntriesTimeoutSVCTCP    time.Duration
+	CTMapEntriesTimeoutSVCAny    time.Duration
+	CTMapEntriesTimeoutSYN       time.Duration
+	CTMapEntriesTimeoutFIN       time.Duration
+	CTMapEntriesTimeoutHalfClose time.Duration
 
 	// EnableMonitor enables the monitor unix domain socket server
 	EnableMonitor bool
@@ -2657,6 +2659,7 @@ func (c *DaemonConfig) Populate() {
 	c.CTMapEntriesTimeoutSVCAny = viper.GetDuration(CTMapEntriesTimeoutSVCAnyName)
 	c.CTMapEntriesTimeoutSYN = viper.GetDuration(CTMapEntriesTimeoutSYNName)
 	c.CTMapEntriesTimeoutFIN = viper.GetDuration(CTMapEntriesTimeoutFINName)
+	c.CTMapEntriesTimeoutHalfClose = viper.GetDuration(CTMapEntriesTimeoutHalfCloseName)
 	c.PolicyAuditMode = viper.GetBool(PolicyAuditModeArg)
 	c.EnableIPv4FragmentsTracking = viper.GetBool(EnableIPv4FragmentsTrackingName)
 	c.FragmentsMapEntries = viper.GetInt(FragmentsMapEntriesName)
