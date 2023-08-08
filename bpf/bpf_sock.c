@@ -709,8 +709,7 @@ static __always_inline void ctx_set_v6_address(struct bpf_sock_addr *ctx,
 static __always_inline __maybe_unused bool
 sock6_skip_xlate(struct lb6_service *svc, union v6addr *address)
 {
-	if (lb6_svc_is_external_ip(svc) ||
-	    (lb6_svc_is_hostport(svc) && !is_v6_loopback(address))) {
+	if (lb6_svc_is_hostport(svc) && !is_v6_loopback(address)) {
 		struct remote_endpoint_info *info;
 
 		info = ipcache_lookup6(&IPCACHE_MAP, address,
