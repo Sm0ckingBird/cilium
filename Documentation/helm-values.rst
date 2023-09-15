@@ -281,6 +281,10 @@
      - Install the CNI configuration and binary files into the filesystem.
      - bool
      - ``true``
+   * - conntrackGCMaxInterval
+     - (string) Configure the maximum frequency for the garbage collection of the connection tracking table. Only affects the automatic computation for the frequency and has no effect when 'conntrackGCInterval' is set. This can be set to more frequently clean up unused identities created from ToFQDN policies.
+     - string
+     - ``""``
    * - containerRuntime
      - Configure container runtime specific integration.
      - object

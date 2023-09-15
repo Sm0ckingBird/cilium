@@ -106,6 +106,9 @@ const (
 	// ConntrackGCInterval is the name of the ConntrackGCInterval option
 	ConntrackGCInterval = "conntrack-gc-interval"
 
+	// ConntrackGCMaxInterval is the name of the ConntrackGCMaxInterval option
+	ConntrackGCMaxInterval = "conntrack-gc-max-interval"
+
 	// DebugArg is the argument enables debugging mode
 	DebugArg = "debug"
 
@@ -1667,6 +1670,10 @@ type DaemonConfig struct {
 	// interval
 	ConntrackGCInterval time.Duration
 
+	// ConntrackGCMaxInterval if set limits the automatic GC interval calculation to
+	// the specified maximum value.
+	ConntrackGCMaxInterval time.Duration
+
 	// K8sEventHandover enables use of the kvstore to optimize Kubernetes
 	// event handling by listening for k8s events in the operator and
 	// mirroring it into the kvstore for reduced overhead in large
@@ -2798,6 +2805,7 @@ func (c *DaemonConfig) Populate() {
 	}
 
 	c.ConntrackGCInterval = viper.GetDuration(ConntrackGCInterval)
+	c.ConntrackGCMaxInterval = viper.GetDuration(ConntrackGCMaxInterval)
 
 	if m, err := command.GetStringMapStringE(viper.GetViper(), KVStoreOpt); err != nil {
 		log.Fatalf("unable to parse %s: %s", KVStoreOpt, err)
