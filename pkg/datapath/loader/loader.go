@@ -33,14 +33,16 @@ import (
 const (
 	Subsystem = "datapath-loader"
 
-	symbolFromEndpoint = "from-container"
-	symbolToEndpoint   = "to-container"
-	symbolFromNetwork  = "from-network"
+	symbolFromEndpoint = "handle_xgress"
+	symbolToEndpoint   = "handle_to_container"
+	symbolFromNetwork  = "from_network"
 
-	symbolFromHostNetdevEp = "from-netdev"
-	symbolToHostNetdevEp   = "to-netdev"
-	symbolFromHostEp       = "from-host"
-	symbolToHostEp         = "to-host"
+	symbolFromHostNetdevEp = "from_netdev"
+	symbolToHostNetdevEp   = "to_netdev"
+	symbolFromHostEp       = "from_host"
+	symbolToHostEp         = "to_host"
+
+	symbolFromHostNetdevXDP = "bpf_xdp_entry"
 
 	dirIngress = "ingress"
 	dirEgress  = "egress"
@@ -256,7 +258,7 @@ func (l *Loader) reloadHostDatapath(ctx context.Context, ep datapath.Endpoint, o
 
 	for i, interfaceName := range interfaceNames {
 		symbol := symbols[i]
-		finalize, err := replaceDatapath(ctx, interfaceName, objPaths[i], symbol, directions[i], false, "")
+		finalize, err := replaceDatapath(ctx, interfaceName, objPaths[i], symbol, directions[i], "")
 		if err != nil {
 			scopedLog := ep.Logger(Subsystem).WithFields(logrus.Fields{
 				logfields.Path: objPath,
@@ -306,7 +308,7 @@ func (l *Loader) reloadDatapath(ctx context.Context, ep datapath.Endpoint, dirs 
 			return err
 		}
 	} else {
-		finalize, err := replaceDatapath(ctx, ep.InterfaceName(), objPath, symbolFromEndpoint, dirIngress, false, "")
+		finalize, err := replaceDatapath(ctx, ep.InterfaceName(), objPath, symbolFromEndpoint, dirIngress, "")
 		if err != nil {
 			scopedLog := ep.Logger(Subsystem).WithFields(logrus.Fields{
 				logfields.Path: objPath,
@@ -323,7 +325,7 @@ func (l *Loader) reloadDatapath(ctx context.Context, ep datapath.Endpoint, dirs 
 		defer finalize()
 
 		if ep.RequireEgressProg() {
-			finalize, err := replaceDatapath(ctx, ep.InterfaceName(), objPath, symbolToEndpoint, dirEgress, false, "")
+			finalize, err := replaceDatapath(ctx, ep.InterfaceName(), objPath, symbolToEndpoint, dirEgress, "")
 			if err != nil {
 				scopedLog := ep.Logger(Subsystem).WithFields(logrus.Fields{
 					logfields.Path: objPath,
@@ -370,7 +372,7 @@ func (l *Loader) replaceNetworkDatapath(ctx context.Context, interfaces []string
 		log.WithError(err).Fatal("failed to compile encryption programs")
 	}
 	for _, iface := range option.Config.EncryptInterface {
-		finalize, err := replaceDatapath(ctx, iface, networkObj, symbolFromNetwork, dirIngress, false, "")
+		finalize, err := replaceDatapath(ctx, iface, networkObj, symbolFromNetwork, dirIngress, "")
 		if err != nil {
 			log.WithField(logfields.Interface, iface).Fatal("Load encryption network failed")
 		}
