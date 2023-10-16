@@ -136,7 +136,7 @@ func classifyProgramTypes(spec *ebpf.CollectionSpec) {
 	for name := range spec.Programs {
 		switch name {
 		// bpf_xdp.c
-		case "bpf_xdp_entry":
+		case "cil_xdp_entry", "cil_xdp_root":
 			t = ebpf.XDP
 		case
 			// bpf_lxc.c

@@ -9,13 +9,18 @@ import (
 	"path"
 	"strings"
 
+	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/mac"
 	"github.com/cilium/cilium/pkg/option"
+	"github.com/cilium/ebpf"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 )
+
+const XDPRoutingRoot = "xdp_routing_root"
+const XDPRoutingEntryId = 1
 
 func xdpModeToFlag(xdpMode string) uint32 {
 	switch xdpMode {
@@ -33,6 +38,7 @@ func xdpModeToFlag(xdpMode string) uint32 {
 
 // maybeUnloadObsoleteXDPPrograms removes bpf_xdp.o from previously used devices.
 func maybeUnloadObsoleteXDPPrograms(xdpDevs []string, xdpMode string) {
+
 	links, err := netlink.LinkList()
 	if err != nil {
 		log.WithError(err).Warn("Failed to list links for XDP unload")
@@ -62,6 +68,17 @@ func maybeUnloadObsoleteXDPPrograms(xdpDevs []string, xdpMode string) {
 		if !used {
 			netlink.LinkSetXdpFdWithFlags(link, -1, int(xdpModeToFlag(option.XDPModeLinkGeneric)))
 			netlink.LinkSetXdpFdWithFlags(link, -1, int(xdpModeToFlag(option.XDPModeLinkDriver)))
+
+			// load from pinned map and remove the entry index
+			hookMap, err := ebpf.LoadPinnedMap(fmt.Sprintf("%s/%s", bpf.MapPrefixPath(), XDPRoutingRoot), nil)
+			if err != nil {
+				log.WithError(err).Warn("can't load the pinned XDP root map")
+				continue
+			}
+			if err := hookMap.Delete(uint32(XDPRoutingEntryId)); err != nil {
+				log.WithError(err).Warn("hook map delete XDP entry err")
+				continue
+			}
 		}
 	}
 }
@@ -118,7 +135,11 @@ func compileAndLoadXDPProg(ctx context.Context, xdpDev, xdpMode string, extraCAr
 	}
 
 	objPath := path.Join(dirs.Output, prog.Output)
-	progs := []progDefinition{{progName: symbolFromHostNetdevXDP, direction: ""}}
+	progs := []progDefinition{
+		{progName: symbolFromHostNetdevRootXDP, direction: "", xdpLoad: &xdpLoadDetail{xdpAttach: true}},
+		{progName: symbolFromHostNetdevXDP, direction: "", xdpLoad: &xdpLoadDetail{
+			xdpMapPath: fmt.Sprintf("%s/%s", bpf.MapPrefixPath(), XDPRoutingRoot), xdpMapIndex: XDPRoutingEntryId}},
+	}
 	finalize, err := replaceDatapath(ctx, xdpDev, objPath, progs, xdpMode)
 	if err != nil {
 		return err

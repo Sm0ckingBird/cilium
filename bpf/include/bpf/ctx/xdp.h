@@ -328,4 +328,28 @@ ctx_get_ifindex(const struct xdp_md *ctx)
 	return ctx->ingress_ifindex;
 }
 
+#ifndef XDP_ROUTING_NETSEC_ROOT_ID
+#define XDP_ROUTING_NETSEC_ROOT_ID 0
+#endif
+
+#ifndef XDP_ROUTING_ENTRY_ID
+#define XDP_ROUTING_ENTRY_ID 1
+#endif
+
+#ifndef XDP_ROUTING_MAP
+#define XDP_ROUTING_MAP xdp_routing_root
+#endif
+
+#ifndef XDP_ROUTING_MAP_MAX_ENTRY
+#define XDP_ROUTING_MAP_MAX_ENTRY 4
+#endif
+
+struct {
+	__uint(type, BPF_MAP_TYPE_PROG_ARRAY);
+	__uint(key_size, sizeof(__u32));
+	__uint(value_size, sizeof(__u32));
+	__uint(max_entries, XDP_ROUTING_MAP_MAX_ENTRY);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} XDP_ROUTING_MAP __section_maps_btf;
+
 #endif /* __BPF_CTX_XDP_H_ */

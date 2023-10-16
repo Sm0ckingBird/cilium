@@ -273,4 +273,12 @@ int cil_xdp_entry(struct __ctx_buff *ctx)
 	return check_filters(ctx);
 }
 
+__section("xdp-root")
+int cil_xdp_root(struct __ctx_buff *ctx)
+{
+	tail_call_static(ctx, &XDP_ROUTING_MAP, XDP_ROUTING_NETSEC_ROOT_ID);
+	tail_call_static(ctx, &XDP_ROUTING_MAP, XDP_ROUTING_ENTRY_ID);
+
+	return check_filters(ctx);
+}
 BPF_LICENSE("GPL");

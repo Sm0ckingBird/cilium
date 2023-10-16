@@ -58,6 +58,7 @@ var ignoredELFPrefixes = []string{
 	"from-host",                  // Prog name
 	"to-netdev",                  // Prog name
 	"to-host",                    // Prog name
+	"xdp-root",                   // Program Section
 	".BTF",                       // Debug
 	".BTF.ext",                   // Debug
 	".debug_ranges",              // Debug

@@ -42,7 +42,8 @@ const (
 	symbolFromHostEp       = "from_host"
 	symbolToHostEp         = "to_host"
 
-	symbolFromHostNetdevXDP = "bpf_xdp_entry"
+	symbolFromHostNetdevRootXDP = "cil_xdp_root"
+	symbolFromHostNetdevXDP     = "cil_xdp_entry"
 
 	dirIngress = "ingress"
 	dirEgress  = "egress"

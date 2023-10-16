@@ -55,6 +55,9 @@ const (
 
 	tcFilterParentIngress = 0xfffffff2
 	tcFilterParentEgress  = 0xfffffff3
+
+	xdpRoutingRoot    = "xdp_routing_root"
+	xdpRoutingEntryId = 1
 )
 
 const (
@@ -252,6 +255,7 @@ func (c ciliumCleanup) cleanupFuncs() []cleanupFunc {
 	funcs := []cleanupFunc{
 		cleanupTCFilters,
 		cleanupXDPs,
+		removeTailCallXDPs,
 	}
 	if !c.bpfOnly {
 		funcs = append(funcs, cleanupRoutesAndLinks)
@@ -548,6 +552,17 @@ func removeXDPs(links []netlink.Link) error {
 	return nil
 }
 
+func removeTailCallXDPs() error {
+	hookMap, err := ebpf.LoadPinnedMap(fmt.Sprintf("%s/%s", bpf.MapPrefixPath(), xdpRoutingRoot), nil)
+	if err != nil {
+		return err
+	}
+	if err := hookMap.Delete(uint32(xdpRoutingEntryId)); err != nil {
+		return err
+	}
+	return nil
+}
+
 func isCiliumXDPAttachedToLink(link netlink.Link) (bool, error) {
 	linkxdp := link.Attrs().Xdp
 	if linkxdp == nil || !linkxdp.Attached {
@@ -573,7 +588,7 @@ func isCiliumXDP(progId uint32) (bool, error) {
 		return false, err
 	}
 
-	if strings.Contains(info.Name, "cil_xdp_entry") {
+	if strings.Contains(info.Name, "cil_xdp_root") {
 		return true, nil
 	}
 

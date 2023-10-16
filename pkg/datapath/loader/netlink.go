@@ -54,9 +54,16 @@ func replaceQdisc(link netlink.Link) error {
 	return netlink.QdiscReplace(qdisc)
 }
 
+type xdpLoadDetail struct {
+	xdpAttach   bool
+	xdpMapPath  string
+	xdpMapIndex int32
+}
+
 type progDefinition struct {
 	progName  string
 	direction string
+	xdpLoad   *xdpLoadDetail
 }
 
 // replaceDatapath replaces the qdisc and BPF program for an endpoint or XDP program.
@@ -139,7 +146,7 @@ func replaceDatapath(ctx context.Context, ifName, objPath string, progs []progDe
 	for _, prog := range progs {
 		scopedLog := l.WithField("progName", prog.progName).WithField("direction", prog.direction)
 		scopedLog.Debug("Attaching program to interface")
-		if err := attachProgram(link, coll.Programs[prog.progName], directionToParent(prog.direction), xdpModeToFlag(xdpMode)); err != nil {
+		if err := attachProgram(link, coll.Programs[prog.progName], directionToParent(prog.direction), xdpModeToFlag(xdpMode), prog.xdpLoad); err != nil {
 			// Program replacement unsuccessful, revert bpffs migration.
 			l.Debug("Reverting bpffs map migration")
 			if err := bpf.FinalizeBPFFSMigration(bpf.MapPrefixPath(), spec, true); err != nil {
@@ -156,14 +163,31 @@ func replaceDatapath(ctx context.Context, ifName, objPath string, progs []progDe
 
 // attachProgram attaches prog to link.
 // If xdpFlags is non-zero, attaches prog to XDP.
-func attachProgram(link netlink.Link, prog *ebpf.Program, qdiscParent uint32, xdpFlags uint32) error {
+func attachProgram(link netlink.Link, prog *ebpf.Program, qdiscParent uint32, xdpFlags uint32, xdpLoad *xdpLoadDetail) error {
 	if prog == nil {
 		return errors.New("cannot attach a nil program")
 	}
 
-	if xdpFlags != 0 {
+	if xdpFlags != 0 && xdpLoad != nil {
 		// Omitting XDP_FLAGS_UPDATE_IF_NOEXIST equals running 'ip' with -force,
 		// and will clobber any existing XDP attachment to the interface.
+
+		// hook up
+		if len(xdpLoad.xdpMapPath) > 0 {
+			// insert into map
+			hookMap, err := ebpf.LoadPinnedMap(xdpLoad.xdpMapPath, nil)
+			if err != nil {
+				return fmt.Errorf("load pinned map from %s with err: %w", xdpLoad.xdpMapPath, err)
+			}
+			if err := hookMap.Put(xdpLoad.xdpMapIndex, int32(prog.FD())); err != nil {
+				return fmt.Errorf("hook up map to %s with index %d with err: %w", xdpLoad.xdpMapPath, xdpLoad.xdpMapIndex, err)
+			}
+		}
+
+		// attach to network
+		if !xdpLoad.xdpAttach {
+			return nil
+		}
 		if err := netlink.LinkSetXdpFdWithFlags(link, prog.FD(), int(xdpFlags)); err != nil {
 			return fmt.Errorf("attaching XDP program to interface %s: %w", link.Attrs().Name, err)
 		}
