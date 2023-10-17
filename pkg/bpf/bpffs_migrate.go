@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"encoding/binary"
-
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/ebpf"
 

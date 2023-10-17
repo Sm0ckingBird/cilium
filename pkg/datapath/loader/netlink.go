@@ -219,34 +219,6 @@ func attachProgram(link netlink.Link, prog *ebpf.Program, qdiscParent uint32, xd
 	return nil
 }
 
-// graftDatapath replaces obj in tail call map
-func graftDatapath(ctx context.Context, mapPath, objPath, progSec string) error {
-	if err := bpf.StartBPFFSMigration(bpf.MapPrefixPath(), objPath); err != nil {
-		return fmt.Errorf("Failed to start bpffs map migration: %w", err)
-	}
-
-	var revert bool
-	defer func() {
-		if err := bpf.FinalizeBPFFSMigration(bpf.MapPrefixPath(), objPath, revert); err != nil {
-			log.WithError(err).WithFields(logrus.Fields{logfields.BPFMapPath: mapPath, "objPath": objPath}).
-				Error("Could not finalize bpffs map migration")
-		}
-	}()
-
-	// FIXME: replace exec with native call
-	// FIXME: only key 0 right now, could be made more flexible
-	args := []string{"exec", "bpf", "graft", mapPath, "key", "0",
-		"obj", objPath, "sec", progSec,
-	}
-	cmd := exec.CommandContext(ctx, "tc", args...).WithFilters(libbpfFixupMsg)
-	if _, err := cmd.CombinedOutput(log, true); err != nil {
-		revert = true
-		return fmt.Errorf("Failed to graft tc object: %s", err)
-	}
-
-	return nil
-}
-
 // RemoveTCFilters removes all tc filters from the given interface.
 // Direction is passed as netlink.HANDLE_MIN_{INGRESS,EGRESS} via tcDir.
 func RemoveTCFilters(ifName string, tcDir uint32) error {
