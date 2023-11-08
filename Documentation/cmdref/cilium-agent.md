@@ -124,6 +124,7 @@ cilium-agent [flags]
       --enable-well-known-identities                         Enable well-known identities for known Kubernetes components (default true)
       --enable-wireguard                                     Enable wireguard
       --enable-wireguard-userspace-fallback                  Enables the fallback to the wireguard userspace implementation
+      --enable-xdp-chain                                     Enable XDP Chain, i.e: multiple XDP
       --enable-xdp-prefilter                                 Enable XDP prefiltering
       --enable-xt-socket-fallback                            Enable fallback for missing xt_socket module (default true)
       --encrypt-interface string                             Transparent encryption interface

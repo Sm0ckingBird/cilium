@@ -702,6 +702,9 @@ func initializeFlags() {
 	flags.Bool(option.EnableIPMasqAgent, false, "Enable BPF ip-masq-agent")
 	option.BindEnv(option.EnableIPMasqAgent)
 
+	flags.Bool(option.EnableXDPChain, false, "Enable XDP Chain, i.e: multiple XDP")
+	option.BindEnv(option.EnableXDPChain)
+
 	flags.Bool(option.EnableIPv4EgressGateway, false, "Enable egress gateway for IPv4")
 	option.BindEnv(option.EnableIPv4EgressGateway)
 

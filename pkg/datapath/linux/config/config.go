@@ -545,6 +545,10 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 		cDefinesMap["ENABLE_CUSTOM_CALLS"] = "1"
 	}
 
+	if option.Config.EnableXDPChain {
+		cDefinesMap["ENABLE_XDP_CHAIN"] = "1"
+	}
+
 	vlanFilter, err := vlanFilterMacros()
 	if err != nil {
 		return err

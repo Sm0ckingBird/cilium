@@ -276,7 +276,9 @@ int cil_xdp_entry(struct __ctx_buff *ctx)
 __section("xdp-root")
 int cil_xdp_root(struct __ctx_buff *ctx)
 {
+#ifdef ENABLE_XDP_CHAIN
 	tail_call_static(ctx, &XDP_ROUTING_MAP, XDP_ROUTING_NETSEC_ROOT_ID);
+#endif
 	tail_call_static(ctx, &XDP_ROUTING_MAP, XDP_ROUTING_ENTRY_ID);
 
 	return check_filters(ctx);

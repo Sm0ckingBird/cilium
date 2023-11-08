@@ -995,6 +995,9 @@ const (
 	// EnableICMPRules enables ICMP-based rule support for Cilium Network Policies.
 	EnableICMPRules = "enable-icmp-rules"
 
+	// EnableXDPChain enabls xdp chaining to run multiple xdp programs, such as net security
+	EnableXDPChain = "enable-xdp-chain"
+
 	// BypassIPAvailabilityUponRestore bypasses the IP availability error
 	// within IPAM upon endpoint restore and allows the use of the restored IP
 	// regardless of whether it's available in the pool.
@@ -2076,6 +2079,9 @@ type DaemonConfig struct {
 	// EnableK8sTerminatingEndpoint enables auto-detect of terminating state for
 	// Kubernetes service endpoints.
 	EnableK8sTerminatingEndpoint bool
+
+	//EnableXDPChain enables multiple xdp such as net security
+	EnableXDPChain bool
 }
 
 var (
@@ -2776,6 +2782,11 @@ func (c *DaemonConfig) Populate() {
 	c.IPv6PodSubnets = subnets
 
 	c.XDPMode = XDPModeLinkNone
+
+	c.EnableXDPChain = viper.GetBool(EnableXDPChain)
+	if c.XDPMode == "none" && c.EnableXDPChain {
+		log.Fatalf("Unable to enable xdp chain when xdp is not enabled. xdpMode %s", c.XDPMode)
+	}
 
 	err = c.populateNodePortRange()
 	if err != nil {
