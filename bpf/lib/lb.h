@@ -1088,7 +1088,7 @@ struct lb4_service *lb4_lookup_service(struct lb4_key *key,
 			return svc2;
 		}
 	}
-
+	key->dport = org_port;
 	return NULL;
 }
 
