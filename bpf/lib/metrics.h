@@ -43,6 +43,36 @@ static __always_inline void update_metrics(__u64 bytes, __u8 direction,
 }
 
 /**
+ * update_metrics_ex
+ * @bytes: 	pkt length, could be negative
+ * @count:	count could be 1 or -1
+ * @direction:	1: Ingress 2: Egress
+ * @reason:	reason for forwarding or dropping packet.
+ *		reason is 0 if packet is being forwarded, else reason
+ *		is the drop error code.
+ * Update the metrics map.
+ */
+static __always_inline void update_metrics_ex(__s64 bytes, __s8 count, __u8 direction,
+					   __u8 reason)
+{
+	struct metrics_value *entry, new_entry = {};
+	struct metrics_key key = {};
+
+	key.reason = reason;
+	key.dir    = direction;
+
+
+	entry = map_lookup_elem(&METRICS_MAP, &key);
+	if (entry) {
+		entry->count += count;
+		entry->bytes += bytes;
+	} else {
+		new_entry.count = 1;
+		new_entry.bytes = bytes;
+		map_update_elem(&METRICS_MAP, &key, &new_entry, 0);
+	}
+}
+/**
  * ct_to_metrics_dir
  * @direction:	1: Ingress 2: Egress 3: Service
  * Convert a CT direction into the corresponding one for metrics.

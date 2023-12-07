@@ -270,6 +270,11 @@ static __always_inline int check_filters(struct __ctx_buff *ctx)
 __section("from-netdev")
 int cil_xdp_entry(struct __ctx_buff *ctx)
 {
+#ifdef ENABLE_XDP_CHAIN
+	int bytes = ctx_full_len(ctx);
+	update_metrics_ex(-bytes, -1, METRIC_INGRESS,
+			  REASON_DROPPED_BY_NET_SECURITY);
+#endif
 	return check_filters(ctx);
 }
 
@@ -277,7 +282,15 @@ __section("xdp-root")
 int cil_xdp_root(struct __ctx_buff *ctx)
 {
 #ifdef ENABLE_XDP_CHAIN
+	int bytes = ctx_full_len(ctx);
+	update_metrics_ex(bytes, 1, METRIC_INGRESS,
+			  REASON_DROPPED_BY_NET_SECURITY);
+
 	tail_call_static(ctx, &XDP_ROUTING_MAP, XDP_ROUTING_NETSEC_ROOT_ID);
+
+	/*missed tail call, reset counter*/
+	update_metrics_ex(-bytes, -1, METRIC_INGRESS,
+			  REASON_DROPPED_BY_NET_SECURITY);
 #endif
 	tail_call_static(ctx, &XDP_ROUTING_MAP, XDP_ROUTING_ENTRY_ID);
 
