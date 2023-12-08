@@ -1103,6 +1103,10 @@ monitor:
   # e.g. native, disabled
   # acceleration: disabled
 
+  # -- dsrL4Translate configures whether use frontend or backend to
+  # translate service port
+  # dsrL4Translate: frontend
+
   # -- dsrDispatch configures whether IP option or IPIP encapsulation is
   # used to pass a service IP and port to remote backend
   # dsrDispatch: opt
