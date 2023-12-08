@@ -1106,6 +1106,9 @@ const (
 	// DSR dispatch mode to encapsulate to IPIP
 	DSRDispatchIPIP = "ipip"
 
+	// DSR dispatch mode to encapsulate to IPIP
+	DSRDispatchIPIPV4CNI = "ipipv4cni"
+
 	// DSR L4 translation to frontend port
 	DSRL4XlateFrontend = "frontend"
 
@@ -1744,7 +1747,7 @@ type DaemonConfig struct {
 	NodePortAlg string
 
 	// LoadBalancerDSRDispatch indicates the method for pushing packets to
-	// backends under DSR ("opt" or "ipip")
+	// backends under DSR ("opt", "ipip", or "ipipv4cni")
 	LoadBalancerDSRDispatch string
 
 	// LoadBalancerDSRL4Xlate indicates the method for L4 DNAT translation

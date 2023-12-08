@@ -28,6 +28,8 @@ DDoS
 DMA'ed
 DNS
 DSR
+dsrL
+dsrL4Translate
 DTrace
 Dangaard
 Datapath

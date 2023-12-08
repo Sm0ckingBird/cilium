@@ -465,6 +465,42 @@ enabled would look as follows:
         --set k8sServiceHost=REPLACE_WITH_API_SERVER_IP \\
         --set k8sServicePort=REPLACE_WITH_API_SERVER_PORT
 
+.. _DSR mode with IPIP:
+
+Direct Server Return (DSR) with IPIP
+************************************
+DSR mode has two options: DSR with IP options, or DSR with IPIP (experimental).
+Sometimes, DSR with IP options are not supported by the underlying network,
+or underlying network switches forwarded the packets with IP options via a slow
+path. In both cases, DSR can be changed to use IPIP encapsulation instead.
+
+In DSR with IPIP mode, the packets are encapsulated with an outer IP header,
+which does not have any options. When the packets arrive backend servers, they
+are decapsulated and then sent to the Pod. For TCP services, Cilium
+only encodes the service IP/port for the SYN packet, but not subsequent ones.
+
+The above Helm example configuration in a kube-proxy-free environment with DSR-only
+and IPIP enabled would look as follows:
+
+Note, DSR with IPIP requires loadBalancer.dsrL4Translate to be set as backend
+(default is frontend), and loadBalancer.acceleration is not disabled. Also,
+only IPv4 is supported. 
+
+.. parsed-literal::
+
+    helm install cilium |CHART_RELEASE| \\
+        --namespace kube-system \\
+        --set tunnel=disabled \\
+        --set autoDirectNodeRoutes=true \\
+        --set kubeProxyReplacement=strict \\
+        --set loadBalancer.mode=dsr \\
+        --set loadBalancer.dsrDispatch=ipipv4cni \\
+        --set loadBalancer.dsrL4Translate=backend \\
+        --set loadBalancer.acceleration=native \\
+        --set k8sServiceHost=REPLACE_WITH_API_SERVER_IP \\
+        --set k8sServicePort=REPLACE_WITH_API_SERVER_PORT
+
+
 .. _Hybrid mode:
 
 Hybrid DSR and SNAT Mode
