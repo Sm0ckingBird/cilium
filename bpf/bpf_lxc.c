@@ -1462,7 +1462,7 @@ skip_policy_enforcement:
 		if (ret == CT_REOPENED)
 			ct_update4_dsr(get_ct_map4(&tuple), &tuple, dsr);
 
-#if DSR_ENCAP_MODE == DSR_ENCAP_IPIPV4_CNI
+#if DSR_ENCAP_MODE == DSR_ENCAP_IPIPV4_CNI || DSR_ENCAP_MODE == DSR_ENCAP_IPIP
 		if (!revalidate_data(ctx, &data, &data_end, &ip4))
 			return DROP_INVALID;
 		tuple.nexthdr = ip4->protocol;
