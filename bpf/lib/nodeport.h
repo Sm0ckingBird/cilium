@@ -2161,7 +2161,7 @@ skip_service_lookup:
 	/* Reply from DSR packet is never seen on this node again hence no
 	 * need to track in here.
 	 */
-	if (backend_local || !nodeport_uses_dsr4(&tuple)) {
+	if (backend_local || !nodeport_uses_dsr4(&tuple) || !lb4_svc_is_external_ip(svc)) {
 		struct ct_state ct_state = {};
 
 		ret = ct_lookup4(get_ct_map4(&tuple), &tuple, ctx, l4_off,
@@ -2226,6 +2226,11 @@ redo_local:
 			if (ret < 0)
 				return ret;
 		}
+
+		if (!lb4_svc_is_external_ip(svc) && backend_local) {
+			ctx_set_xfer(ctx, XFER_PKT_NO_SVC);
+			return CTX_ACT_OK;
+		}
 	}
 
 #if DSR_ENCAP_MODE != DSR_ENCAP_IPIPV4_CNI
@@ -2233,7 +2238,7 @@ redo_local:
 #endif
 	{
 		edt_set_aggregate(ctx, 0);
-		if (nodeport_uses_dsr4(&tuple)) {
+		if (nodeport_uses_dsr4(&tuple) && lb4_svc_is_external_ip(svc)) {
 #if DSR_ENCAP_MODE == DSR_ENCAP_IPIPV4_CNI
 			ctx_store_meta(ctx, CB_HINT,
 				       ((__u32)tuple.sport << 16) | tuple.dport);
