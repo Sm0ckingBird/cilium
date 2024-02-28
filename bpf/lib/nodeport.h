@@ -2143,7 +2143,7 @@ redo_local:
 		}
 	}
 
-#if DSR_ENCAP_MODE != DSR_ENCAP_IPIP
+#if DSR_ENCAP_MODE != DSR_ENCAP_IPIPV4_CNI
 	if (!backend_local)
 #endif
 	{
