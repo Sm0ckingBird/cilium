@@ -19,6 +19,7 @@ type FilterAttrs struct {
 	Parent    uint32
 	Priority  uint16 // lower is higher priority
 	Protocol  uint16 // unix.ETH_P_*
+	Chain     *uint32
 }
 
 func (q FilterAttrs) String() string {
@@ -26,6 +27,11 @@ func (q FilterAttrs) String() string {
 }
 
 type TcAct int32
+
+const (
+	TC_ACT_EXT_SHIFT    = 28
+	TC_ACT_EXT_VAL_MASK = (1 << TC_ACT_EXT_SHIFT) - 1
+)
 
 const (
 	TC_ACT_UNSPEC     TcAct = -1
@@ -39,6 +45,22 @@ const (
 	TC_ACT_REDIRECT   TcAct = 7
 	TC_ACT_JUMP       TcAct = 0x10000000
 )
+
+func getTcActExt(local int32) int32 {
+	return local << TC_ACT_EXT_SHIFT
+}
+
+func getTcActGotoChain() TcAct {
+	return TcAct(getTcActExt(2))
+}
+
+func getTcActExtOpcode(combined int32) int32 {
+	return combined & (^TC_ACT_EXT_VAL_MASK)
+}
+
+func TcActExtCmp(combined int32, opcode int32) bool {
+	return getTcActExtOpcode(combined) == opcode
+}
 
 func (a TcAct) String() string {
 	switch a {
@@ -62,6 +84,9 @@ func (a TcAct) String() string {
 		return "redirect"
 	case TC_ACT_JUMP:
 		return "jump"
+	}
+	if TcActExtCmp(int32(a), int32(getTcActGotoChain())) {
+		return "goto"
 	}
 	return fmt.Sprintf("0x%x", int32(a))
 }
@@ -112,6 +137,7 @@ type Action interface {
 
 type GenericAction struct {
 	ActionAttrs
+	Chain int32
 }
 
 func (action *GenericAction) Type() string {
@@ -151,6 +177,39 @@ func (action *ConnmarkAction) Attrs() *ActionAttrs {
 
 func NewConnmarkAction() *ConnmarkAction {
 	return &ConnmarkAction{
+		ActionAttrs: ActionAttrs{
+			Action: TC_ACT_PIPE,
+		},
+	}
+}
+
+type CsumUpdateFlags uint32
+
+const (
+	TCA_CSUM_UPDATE_FLAG_IPV4HDR CsumUpdateFlags = 1
+	TCA_CSUM_UPDATE_FLAG_ICMP    CsumUpdateFlags = 2
+	TCA_CSUM_UPDATE_FLAG_IGMP    CsumUpdateFlags = 4
+	TCA_CSUM_UPDATE_FLAG_TCP     CsumUpdateFlags = 8
+	TCA_CSUM_UPDATE_FLAG_UDP     CsumUpdateFlags = 16
+	TCA_CSUM_UPDATE_FLAG_UDPLITE CsumUpdateFlags = 32
+	TCA_CSUM_UPDATE_FLAG_SCTP    CsumUpdateFlags = 64
+)
+
+type CsumAction struct {
+	ActionAttrs
+	UpdateFlags CsumUpdateFlags
+}
+
+func (action *CsumAction) Type() string {
+	return "csum"
+}
+
+func (action *CsumAction) Attrs() *ActionAttrs {
+	return &action.ActionAttrs
+}
+
+func NewCsumAction() *CsumAction {
+	return &CsumAction{
 		ActionAttrs: ActionAttrs{
 			Action: TC_ACT_PIPE,
 		},
@@ -242,6 +301,7 @@ type SkbEditAction struct {
 	PType        *uint16
 	Priority     *uint32
 	Mark         *uint32
+	Mask         *uint32
 }
 
 func (action *SkbEditAction) Type() string {
@@ -315,6 +375,7 @@ type FwFilter struct {
 	InDev   string
 	Mask    uint32
 	Police  *PoliceAction
+	Actions []Action
 }
 
 func (filter *FwFilter) Attrs() *FilterAttrs {
