@@ -2253,9 +2253,11 @@ redo_local:
 			ctx_store_meta(ctx, CB_HINT,
 				       ((__u32)tuple.sport << 16) | tuple.dport);
 			ctx_store_meta(ctx, CB_ADDR_V4, tuple.daddr);
+
 #ifndef ENABLE_LBONLY
 			/* tuple.daddr is the backend ip now. For non LB-only IPIP case,
 				restore inner IP daddr as org daddr */
+
 			sum = csum_diff(&tuple.daddr, 4, &org_daddr, 4, 0);
 			ret = ctx_store_bytes(ctx, l3_off + offsetof(struct iphdr, daddr),
 					&org_daddr, 4, 0);
@@ -2264,6 +2266,13 @@ redo_local:
 			if (l3_csum_replace(ctx, l3_off + offsetof(struct iphdr, check),
 					0, sum, 0) < 0)
 				return DROP_CSUM_L3;
+
+			if (csum_off.offset) {
+				if (csum_l4_replace(ctx, l4_off, &csum_off, 0, sum,
+						    BPF_F_PSEUDO_HDR) < 0)
+					return DROP_CSUM_L4;
+			}
+
 #endif /* ENABLE_LBONLY */
 
 #elif DSR_ENCAP_MODE == DSR_ENCAP_NONE
