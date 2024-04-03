@@ -1586,7 +1586,7 @@ static __always_inline int handle_dsr_v4(struct __ctx_buff *ctx __maybe_unused, 
 			__u8 protocol;
 			__be32 saddr;
 			__be32 daddr;
-		} tp_old = {}, tp_new = {};
+		} tp_old = {};
 
 		if (!revalidate_data(ctx, &data, &data_end, &ip4))
 			return DROP_INVALID;
@@ -1604,19 +1604,23 @@ static __always_inline int handle_dsr_v4(struct __ctx_buff *ctx __maybe_unused, 
 					   &iph_inner, sizeof(iph_inner)) < 0)
 				return DROP_INVALID;
 
+			//iph_old = iph_inner;
+
 			if (ctx_load_bytes(ctx, ETH_HLEN + sizeof(struct iphdr) * 2 + 2,
 					   &dport, sizeof(dport)) < 0)
 				return DROP_INVALID;
 
+			/*
 			tot_len = bpf_ntohs(iph_inner.tot_len);
 
 			tp_new.tot_len = bpf_htons(tot_len);
-			tp_new.ttl = ip4->ttl;
+			tp_new.ttl = iph_inner.ttl;
 			tp_new.protocol = iph_inner.protocol;
-			tp_new.saddr = ip4->saddr;
-			tp_new.daddr = ip4->daddr;
+			tp_new.saddr = iph_inner.saddr; //need to use inner src ip
+			tp_new.daddr = iph_inner.daddr; //still use inner dest ip
 
 			sum = csum_diff(&tp_old, 16, &tp_new, 16, sum);
+			*/
 
 			/* this will remove inner iph */
 			if (ctx_adjust_hroom(ctx, -(iph_inner.ihl * 4),
@@ -1625,7 +1629,15 @@ static __always_inline int handle_dsr_v4(struct __ctx_buff *ctx __maybe_unused, 
 				return DROP_INVALID;
 			}
 
+			/* replace outer iph with inner iph */
+			if (ctx_store_bytes(ctx, l3_off,
+					    &iph_inner, sizeof(iph_inner), 0) < 0)
+				return DROP_WRITE_ERROR;
+
+
+			/*
 			//change tot len and protocl
+			// change inner header to correct contents
 			if (ctx_store_bytes(ctx, l3_off + offsetof(struct iphdr, tot_len),
 			    &tp_new.tot_len, 2, 0) < 0)
 				return DROP_WRITE_ERROR;
@@ -1639,6 +1651,7 @@ static __always_inline int handle_dsr_v4(struct __ctx_buff *ctx __maybe_unused, 
 					    0, sum, 0) < 0)
 				return DROP_CSUM_L3;
 
+
 			*dsr = true;
 			dport2 = bpf_ntohs(dport);
 			address = bpf_ntohl(iph_inner.daddr);
@@ -1646,6 +1659,7 @@ static __always_inline int handle_dsr_v4(struct __ctx_buff *ctx __maybe_unused, 
 					       dport) < 0) {
 				return DROP_INVALID;
 			}
+			*/
 		}
 	}
 
