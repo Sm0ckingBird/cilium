@@ -78,11 +78,6 @@ func maybeUnloadObsoleteXDPPrograms(xdpDevs []string, xdpMode string) {
 
 		used := false
 		for _, xdpDev := range xdpDevs {
-			if link.Attrs().Name == xdpDev {
-				errs := fmt.Sprintf("linkxdp.AttachMode %d, attToflag %d,  xdpmodeToflag %d",
-					linkxdp.AttachMode, xdpAttachedModeToFlag(linkxdp.AttachMode), xdpConfigModeToFlag(xdpMode))
-				log.Error(errs)
-			}
 			if link.Attrs().Name == xdpDev &&
 				xdpAttachedModeToFlag(linkxdp.AttachMode) == xdpConfigModeToFlag(xdpMode) {
 				// XDP mode matches; don't unload, otherwise we might introduce
