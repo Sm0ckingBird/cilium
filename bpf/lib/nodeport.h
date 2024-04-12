@@ -2084,7 +2084,7 @@ drop_err:
 static __always_inline int nodeport_lb4(struct __ctx_buff *ctx,
 					__u32 src_identity)
 {
-	struct ipv4_ct_tuple tuple = {};
+	struct ipv4_ct_tuple tuple = {}, nat_tuple = {};
 	void *data, *data_end;
 	struct iphdr *ip4;
 	int ret,  l3_off = ETH_HLEN, l4_off;
@@ -2110,7 +2110,17 @@ static __always_inline int nodeport_lb4(struct __ctx_buff *ctx,
 	tuple.saddr = ip4->saddr;
 	org_daddr = tuple.daddr;
 
+	nat_tuple.nexthdr = ip4->protocol;
+	nat_tuple.daddr = ip4->daddr;
+	nat_tuple.saddr = ip4->saddr;
+
 	l4_off = l3_off + ipv4_hdrlen(ip4);
+
+	//hack: need to check protocol correctly
+	l4_load_port(ctx, l4_off + TCP_DPORT_OFF, &nat_tuple.dport);
+	l4_load_port(ctx, l4_off + TCP_SPORT_OFF, &nat_tuple.sport);
+	nat_tuple.flags = TUPLE_F_IN;
+
 
 	ret = lb4_extract_key(ctx, ip4, l4_off, &key, &csum_off, CT_EGRESS);
 	if (IS_ERR(ret)) {
@@ -2156,7 +2166,7 @@ skip_service_lookup:
 		ctx_set_xfer(ctx, XFER_PKT_NO_SVC);
 
 #ifndef ENABLE_MASQUERADE
-		if (nodeport_uses_dsr4(&tuple))
+		if (nodeport_uses_dsr4(&tuple) && !snat_v4_lookup(&nat_tuple))
 			return CTX_ACT_OK;
 #endif
 
