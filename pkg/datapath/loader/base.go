@@ -402,7 +402,7 @@ func (l *Loader) Reinitialize(ctx context.Context, o datapath.BaseProgramOwner, 
 
 	// Datapath initialization
 	hostmode := mode
-	if option.Config.LoadBalancerDSRDispatch == option.DSRDispatchIPIP {
+	if option.Config.LoadBalancerDSRDispatch == option.DSRDispatchIPIPV4CNI {
 		hostmode = ipipMode
 	}
 	hostDev1, hostDev2, err := setupBaseDevice(devices, hostmode, deviceMTU)
