@@ -1,0 +1,26 @@
+stages:
+  - pre
+  - check
+  - test
+
+variables:
+  COMMIT_SHORT_SHA: git rev-parse --short=8 ${CI_COMMIT_SHA}
+
+precheck:
+  tags:
+    - cilium
+  stage: check
+  script:
+    - make precheck
+
+integration_tests:
+  tags:
+    - cilium
+  stage: test
+  script:
+    - CLANG=clang-12 LLC=llc-12 make integration-tests
+  dependencies:
+    - precheck
+  only:
+    - /^dsr-ipip.*$/
+
