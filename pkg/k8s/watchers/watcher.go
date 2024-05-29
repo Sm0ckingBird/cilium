@@ -787,7 +787,7 @@ func attemptNamespaceResetAfterError(hostNSHandle netns.NsHandle) {
 	_ = activeNetworkNamespaceHandle.Close()
 }
 
-func (k *K8sWatcher) configExternalIP(ep *endpoint.Endpoint, exIP net.IP) error {
+func (k *K8sWatcher) configExternalIP(ep *endpoint.Endpoint, exIP net.IP, isIPv4 bool) error {
 	sysruntime.LockOSThread()
 	defer sysruntime.UnlockOSThread()
 
@@ -859,9 +859,20 @@ func (k *K8sWatcher) configExternalIP(ep *endpoint.Endpoint, exIP net.IP) error 
 
 	// assign external IP to loopback interface
 	//ipbyteslice, err := exIP.MarshalText()
-	ip := net.IPNet{IP: exIP, Mask: net.IPv4Mask(255, 255, 255, 255)}
-	addr := &netlink.Addr{IPNet: &ip, Scope: syscall.RT_SCOPE_LINK}
+	//ip := net.IPNet{IP: exIP, Mask: net.IPv4Mask(255, 255, 255, 255)}
+	//addr := &netlink.Addr{IPNet: &ip, Scope: syscall.RT_SCOPE_LINK}
+	ipv6NetMaskBits := 128
 
+	var ip net.IPNet
+	var addr *netlink.Addr
+	if isIPv4 {
+		ip = net.IPNet{IP: exIP, Mask: net.IPv4Mask(255, 255, 255, 255)}
+		addr = &netlink.Addr{IPNet: &ip, Scope: syscall.RT_SCOPE_LINK}
+	} else {
+		netMask := net.CIDRMask(ipv6NetMaskBits, ipv6NetMaskBits)
+		ip = net.IPNet{IP: exIP, Mask: netMask}
+		addr = &netlink.Addr{IPNet: &ip, Scope: syscall.RT_SCOPE_LINK}
+	}
 	log.WithFields(logrus.Fields{
 		"IP.ip":   ip.IP.String(),
 		"IP.mask": ip.Mask.String(),
@@ -969,8 +980,18 @@ func (k *K8sWatcher) addK8sSVCs(svcID k8s.ServiceID, oldSvc, svc *k8s.Service, e
 						"backend ip":  backend.L3n4Addr.IP,
 						"frontend ip": p.Frontend.IP,
 					}).Debug("Add svc, Found ep with external srv.")
-					k.configExternalIP(ep, p.Frontend.IP)
+					k.configExternalIP(ep, p.Frontend.IP, true)
 				}
+
+				if ep.IPv6.IP().Equal(backend.L3n4Addr.IP) {
+					log.WithFields(logrus.Fields{
+						"ep name":     ep.GetK8sPodName(),
+						"backend ip":  backend.L3n4Addr.IP,
+						"frontend ip": p.Frontend.IP,
+					}).Debug("Add svc, Found ep with external srv in ipv6.")
+					k.configExternalIP(ep, p.Frontend.IP, false)
+				}
+
 			}
 		}
 	}
