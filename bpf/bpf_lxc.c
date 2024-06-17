@@ -118,8 +118,9 @@ static __always_inline int ipv6_l3_from_lxc(struct __ctx_buff *ctx,
 	__u8 audited = 0;
 	bool __maybe_unused dst_remote_ep = false;
 
-	if (unlikely(!is_valid_lxc_src_ip(ip6)))
-		return DROP_INVALID_SIP;
+	// remove ipv6 src ip check for vip
+	//if (unlikely(!is_valid_lxc_src_ip(ip6)))
+	//	return DROP_INVALID_SIP;
 
 	ipv6_addr_copy(&tuple->daddr, (union v6addr *) &ip6->daddr);
 	ipv6_addr_copy(&tuple->saddr, (union v6addr *) &ip6->saddr);
@@ -1145,7 +1146,8 @@ ipv6_policy(struct __ctx_buff *ctx, int ifindex, __u32 src_label, __u8 *reason,
 	}
 
 #ifdef ENABLE_DSR
-	if (ret == CT_NEW || ret == CT_REOPENED) {
+	//if (ret == CT_NEW || ret == CT_REOPENED) {
+	{
 		bool dsr = false;
 		int ret2;
 
@@ -1153,7 +1155,8 @@ ipv6_policy(struct __ctx_buff *ctx, int ifindex, __u32 src_label, __u8 *reason,
 		if (ret2 != 0)
 			return ret2;
 
-		ct_state_new.dsr = dsr;
+		if (ret == CT_NEW || ret == CT_REOPENED)
+			ct_state_new.dsr = dsr;
 		if (ret == CT_REOPENED)
 			ct_update6_dsr(get_ct_map6(&tuple), &tuple, dsr);
 	}

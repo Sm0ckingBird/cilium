@@ -393,17 +393,46 @@ static __always_inline int handle_dsr_v6(struct __ctx_buff *ctx, bool *dsr)
 	void *data, *data_end;
 	struct ipv6hdr *ip6;
 	int ret;
+	//bool extIP = false;
+	struct csum_offset csum = {};
+	__be32 sum;
+	int hdrlen;
+	__u32 off;
+	__u8 org_nexthdr = 0, new_nexthdr = 0;
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip6))
 		return DROP_INVALID;
 
+	org_nexthdr = ip6->nexthdr;
+	//printk("jiang: org nexhrd is %d", org_nexthdr);
+	
 	ret = find_dsr_v6(ctx, ip6->nexthdr, &opt, dsr);
 	if (ret != 0)
 		return ret;
 
+	hdrlen = ipv6_hdrlen(ctx, ETH_HLEN, &ip6->nexthdr);
+	if (hdrlen < 0)
+		return hdrlen;
+	//printk("jiang: after hdrlen, nexhrd %d, hdrlen %d", ip6->nexthdr, hdrlen);
+	off = ((void *)ip6 - data) + hdrlen;
+	new_nexthdr = ip6->nexthdr;
+	ip6->nexthdr = org_nexthdr;
+
+
 	if (*dsr) {
 		if (snat_v6_create_dsr(ctx, &opt.addr, opt.port) < 0)
 			return DROP_INVALID;
+
+		/* replace dest addr with external IP */
+
+		sum = csum_diff(&ip6->daddr, 16, &opt.addr, 16, 0);
+		csum_l4_offset_and_flags(new_nexthdr, &csum);
+		if (ctx_store_bytes(ctx, ETH_HLEN + offsetof(struct ipv6hdr, daddr),
+			    &opt.addr, 16, 0) < 0)
+			return DROP_WRITE_ERROR;
+		if (csum.offset &&
+			csum_l4_replace(ctx, off, &csum, 0, sum, BPF_F_PSEUDO_HDR) < 0)
+			return DROP_CSUM_L4;
 	}
 
 	return 0;
@@ -513,6 +542,7 @@ int tail_nodeport_ipv6_dsr(struct __ctx_buff *ctx)
 	union v6addr addr;
 	int ret, ohead = 0;
 	bool l2_hdr_required = true;
+	//bool isExtIP = false;
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip6)) {
 		ret = DROP_INVALID;
@@ -523,6 +553,9 @@ int tail_nodeport_ipv6_dsr(struct __ctx_buff *ctx)
 	addr.p2 = ctx_load_meta(ctx, CB_ADDR_V6_2);
 	addr.p3 = ctx_load_meta(ctx, CB_ADDR_V6_3);
 	addr.p4 = ctx_load_meta(ctx, CB_ADDR_V6_4);
+
+	//to do:
+	//isExtIP = lb6_svc_is_external_ip();
 
 #if DSR_ENCAP_MODE == DSR_ENCAP_IPIP
 	ret = dsr_set_ipip6(ctx, ip6, &addr,
@@ -712,6 +745,7 @@ static __always_inline int nodeport_lb6(struct __ctx_buff *ctx,
 	union macaddr smac, *mac;
 	bool backend_local;
 	__u32 monitor = 0;
+	bool isExtIP = false;
 
 	cilium_capture_in(ctx);
 
@@ -753,6 +787,7 @@ static __always_inline int nodeport_lb6(struct __ctx_buff *ctx,
 				skip_l3_xlate);
 		if (IS_ERR(ret))
 			return ret;
+		isExtIP = lb6_svc_is_external_ip(svc);
 	}
 
 	if (!svc || !lb6_svc_is_routable(svc)) {
