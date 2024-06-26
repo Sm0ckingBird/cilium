@@ -607,6 +607,48 @@ out_send:
 drop_err:
 	return send_drop_notify_error(ctx, 0, ret, CTX_ACT_DROP, METRIC_EGRESS);
 }
+
+static __always_inline int nodeport_ipv6_dsr(struct __ctx_buff *ctx)
+{
+	void *data, *data_end;
+	struct ipv6hdr *ip6;
+	union v6addr addr;
+	int ret = 0, ohead = 0;
+	//bool isExtIP = false;
+
+	if (!revalidate_data(ctx, &data, &data_end, &ip6)) {
+		ret = DROP_INVALID;
+		goto drop_err;
+	}
+
+	addr.p1 = ctx_load_meta(ctx, CB_ADDR_V6_1);
+	addr.p2 = ctx_load_meta(ctx, CB_ADDR_V6_2);
+	addr.p3 = ctx_load_meta(ctx, CB_ADDR_V6_3);
+	addr.p4 = ctx_load_meta(ctx, CB_ADDR_V6_4);
+
+	//to do:
+	//isExtIP = lb6_svc_is_external_ip();
+
+#if DSR_ENCAP_MODE == DSR_ENCAP_NONE || DSR_ENCAP_MODE == DSR_ENCAP_IPIPV4_CNI
+	ret = dsr_set_ext6(ctx, ip6, &addr,
+			   ctx_load_meta(ctx, CB_PORT), &ohead);
+#endif
+	if (unlikely(ret)) {
+		if (dsr_fail_needs_reply(ret))
+			return dsr_reply_icmp6(ctx, ip6, ret, ohead);
+		goto drop_err;
+	}
+	if (!revalidate_data(ctx, &data, &data_end, &ip6)) {
+		ret = DROP_INVALID;
+		goto drop_err;
+	}
+
+	cilium_capture_out(ctx);
+	return 0;
+drop_err:
+	return send_drop_notify_error(ctx, 0, ret, CTX_ACT_DROP, METRIC_EGRESS);
+}
+
 #endif /* ENABLE_DSR */
 
 __section_tail(CILIUM_MAP_CALLS, CILIUM_CALL_IPV6_NODEPORT_NAT)
@@ -742,7 +784,7 @@ static __always_inline int nodeport_lb6(struct __ctx_buff *ctx,
 	struct lb6_service *svc;
 	struct lb6_key key = {};
 	struct ct_state ct_state_new = {};
-	union macaddr smac, *mac;
+	union macaddr smac = {}, *mac;
 	bool backend_local;
 	__u32 monitor = 0;
 	bool isExtIP = false;
@@ -871,7 +913,10 @@ redo_local:
 		}
 	}
 
-	if (!backend_local) {
+#if DSR_ENCAP_MODE != DSR_ENCAP_IPIPV4_CNI // todo : use a new config
+	if (!backend_local)
+#endif
+	{
 		edt_set_aggregate(ctx, 0);
 		if (nodeport_uses_dsr6(&tuple)) {
 #if DSR_ENCAP_MODE == DSR_ENCAP_IPIP
@@ -888,7 +933,18 @@ redo_local:
 			ctx_store_meta(ctx, CB_ADDR_V6_3, key.address.p3);
 			ctx_store_meta(ctx, CB_ADDR_V6_4, key.address.p4);
 #endif /* DSR_ENCAP_MODE */
+#if DSR_ENCAP_MODE == DSR_ENCAP_IPIPV4_CNI //to do change to a new config
+                        if (!backend_local)
+                                ep_tail_call(ctx, CILIUM_CALL_IPV6_NODEPORT_DSR);
+                        else {
+                                nodeport_ipv6_dsr(ctx);
+                                ctx_set_xfer(ctx, XFER_PKT_NO_SVC);
+
+                                return CTX_ACT_OK;
+                        }
+#elif DSR_ENCAP_MODE == DSR_ENCAP_NONE || DSR_ENCAP_MODE == DSR_ENCAP_IPIP
 			ep_tail_call(ctx, CILIUM_CALL_IPV6_NODEPORT_DSR);
+#endif
 		} else {
 			ctx_store_meta(ctx, CB_NAT, NAT_DIR_EGRESS);
 			ep_tail_call(ctx, CILIUM_CALL_IPV6_NODEPORT_NAT);
