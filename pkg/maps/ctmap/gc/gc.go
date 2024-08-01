@@ -20,6 +20,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// initialGCInterval sets the time after which the agent will begin to warn
+// regarding a long ctmap gc duration.
+const initialGCInterval = 30 * time.Second
+
 var log = logging.DefaultLogger.WithField(logfields.LogSubsys, "ct-gc")
 
 // EndpointManager is any type which returns the list of Endpoints which are
@@ -139,12 +143,19 @@ func Enable(ipv4, ipv6 bool, restoredEndpoints []*endpoint.Endpoint, mgr Endpoin
 		}
 	}()
 
-	select {
-	case <-initialScanComplete:
-		log.Info("Initial scan of connection tracking completed")
-	case <-time.After(30 * time.Second):
-		log.Fatal("Timeout while waiting for initial conntrack scan")
-	}
+	// Start a background go routine that waits to see if either the initial scan completes before
+	// our expected time of 30 seconds.
+	// This is to notify users of potential issues affecting initial scan performance.
+	go func() {
+		select {
+		case <-initialScanComplete:
+			log.Info("Initial scan of connection tracking completed")
+		case <-time.After(initialGCInterval):
+			log.Warn("Failed to perform initial ctmap gc scan within expected duration." +
+				"This may be caused by large ctmap sizes or by constraint CPU resources upon start." +
+				"Delayed initial ctmap scan may result in delayed map pressure metrics for ctmap.")
+		}
+	}()
 }
 
 // runGC run CT's garbage collector for the given endpoint. `isLocal` refers if
