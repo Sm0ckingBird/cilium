@@ -58,6 +58,8 @@ type LRPConfig struct {
 	// frontendMappings is a slice of policy config frontend mappings that include
 	// frontend address, frontend port name, and a slice of its associated backends
 	frontendMappings []*feMapping
+	// frontendMappings has only one port
+	frontendMappingsOnePort bool
 	// serviceID is the parsed service name and namespace
 	serviceID *k8s.ServiceID
 	// backendSelector is an endpoint selector generated from the parsed policy selector
@@ -117,6 +119,20 @@ func (feM *feMapping) GetModel() *models.FrontendMapping {
 		},
 		Backends: bes,
 	}
+}
+
+func (feM *feMapping) DeepCopy() *feMapping {
+	var feMCopy feMapping
+
+	feMCopy = *feM
+	feMCopy.feAddr = lb.NewL3n4Addr(feM.feAddr.L4Addr.Protocol, feM.feAddr.AddrCluster,
+		feM.feAddr.L4Addr.Port, feM.feAddr.Scope)
+	feMCopy.podBackends = make([]backend, len(feM.podBackends))
+	for i, be := range feM.podBackends {
+		feMCopy.podBackends[i] = be
+	}
+
+	return &feMCopy
 }
 
 type bePortInfo struct {

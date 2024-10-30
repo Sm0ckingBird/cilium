@@ -48,8 +48,9 @@ type svcManager interface {
 
 type svcCache interface {
 	EnsureService(svcID k8s.ServiceID, swg *lock.StoppableWaitGroup) bool
-	GetServiceAddrsWithType(svcID k8s.ServiceID, svcType lb.SVCType) (map[lb.FEPortName][]*lb.L3n4Addr, int)
-	GetServiceFrontendIP(svcID k8s.ServiceID, svcType lb.SVCType) net.IP
+	GetServiceAddrs(svcID k8s.ServiceID) (map[lb.FEPortName][]*lb.L3n4Addr, int)
+	GetServiceFrontendIP(svcID k8s.ServiceID) net.IP
+	GetServiceK8sExternalIPs(svcID k8s.ServiceID) []net.IP
 }
 
 type endpointManager interface {
@@ -472,8 +473,7 @@ func (rpm *Manager) getAndUpsertPolicySvcConfig(config *LRPConfig) error {
 	switch config.frontendType {
 	case svcFrontendAll:
 		// Get all the service frontends.
-		addrsByPort, feIPsCount := rpm.svcCache.GetServiceAddrsWithType(*config.serviceID,
-			lb.SVCTypeClusterIP)
+		addrsByPort, feIPsCount := rpm.svcCache.GetServiceAddrs(*config.serviceID)
 		config.frontendMappings = make([]*feMapping, 0, len(addrsByPort)*feIPsCount)
 		for p, addrs := range addrsByPort {
 			for _, addr := range addrs {
@@ -485,17 +485,26 @@ func (rpm *Manager) getAndUpsertPolicySvcConfig(config *LRPConfig) error {
 			}
 			rpm.updateConfigSvcFrontend(config, addrs...)
 		}
+		config.frontendMappingsOnePort = len(addrsByPort) == 1
 
 	case svcFrontendSinglePort:
 		// Get service frontend with the clusterIP and the policy config (unnamed) port.
-		ip := rpm.svcCache.GetServiceFrontendIP(*config.serviceID, lb.SVCTypeClusterIP)
+		ip := rpm.svcCache.GetServiceFrontendIP(*config.serviceID)
 		if ip == nil {
 			// The LRP will be applied when the selected service is added later.
 			return nil
 		}
-		addrCluster := cmtypes.MustAddrClusterFromIP(ip)
-		config.frontendMappings[0].feAddr.AddrCluster = addrCluster
-		rpm.updateConfigSvcFrontend(config, config.frontendMappings[0].feAddr)
+		ips := rpm.svcCache.GetServiceK8sExternalIPs(*config.serviceID)
+		ips = append(ips, ip)
+
+		frontendMappings := make([]*feMapping, 0, len(ips))
+		for _, ip := range ips {
+			feMCopy := config.frontendMappings[0].DeepCopy()
+			feMCopy.feAddr.AddrCluster = cmtypes.MustAddrClusterFromIP(ip)
+			frontendMappings = append(frontendMappings, feMCopy)
+			rpm.updateConfigSvcFrontend(config, feMCopy.feAddr)
+		}
+		config.frontendMappings = frontendMappings
 
 	case svcFrontendNamedPorts:
 		// Get service frontends with the clusterIP and the policy config named ports.
@@ -503,7 +512,7 @@ func (rpm *Manager) getAndUpsertPolicySvcConfig(config *LRPConfig) error {
 		for i, mapping := range config.frontendMappings {
 			ports[i] = mapping.fePort
 		}
-		ip := rpm.svcCache.GetServiceFrontendIP(*config.serviceID, lb.SVCTypeClusterIP)
+		ip := rpm.svcCache.GetServiceFrontendIP(*config.serviceID)
 		if ip == nil {
 			// The LRP will be applied when the selected service is added later.
 			return nil
@@ -511,6 +520,21 @@ func (rpm *Manager) getAndUpsertPolicySvcConfig(config *LRPConfig) error {
 		addrCluster := cmtypes.MustAddrClusterFromIP(ip)
 		for _, feM := range config.frontendMappings {
 			feM.feAddr.AddrCluster = addrCluster
+		}
+
+		ips := rpm.svcCache.GetServiceK8sExternalIPs(*config.serviceID)
+		frontendMappings := make([]*feMapping, 0, len(ips) * len(config.frontendMappings))
+		for _, ip := range ips {
+			addrCluster = cmtypes.MustAddrClusterFromIP(ip)
+			for _, feM := range config.frontendMappings {
+				feMCopy := feM.DeepCopy()
+				feMCopy.feAddr.AddrCluster = addrCluster
+				frontendMappings = append(frontendMappings, feMCopy)
+			}
+		}
+		config.frontendMappings = append(frontendMappings, config.frontendMappings...)
+
+		for _, feM := range config.frontendMappings {
 			rpm.updateConfigSvcFrontend(config, feM.feAddr)
 		}
 	}
@@ -856,7 +880,7 @@ func (rpm *Manager) processConfig(config *LRPConfig, pods ...*podMetadata) {
 	case addrFrontendNamedPorts:
 		rpm.processConfigWithNamedPorts(config, pods...)
 	case svcFrontendAll:
-		if len(config.frontendMappings) > 1 {
+		if !config.frontendMappingsOnePort {
 			// The retrieved service frontend has multiple ports, in which case
 			// Kubernetes mandates that the ports be named.
 			rpm.processConfigWithNamedPorts(config, pods...)
@@ -880,43 +904,44 @@ func (rpm *Manager) processConfigWithSinglePort(config *LRPConfig, pods ...*podM
 	// a service with the corresponding frontend. This can be optimized when LRPs
 	// are scaled up.
 	bePort := config.backendPorts[0]
-	feM := config.frontendMappings[0]
-	for _, pod := range pods {
-		var (
-			bes4 []backend
-			bes6 []backend
-		)
-		for _, ip := range pod.ips {
-			beIP := net.ParseIP(ip)
-			if beIP == nil {
-				continue
-			}
-			be := backend{
-				lb.L3n4Addr{
-					AddrCluster: cmtypes.MustParseAddrCluster(ip),
-					L4Addr: lb.L4Addr{
-						Protocol: bePort.l4Addr.Protocol,
-						Port:     bePort.l4Addr.Port,
-					},
-				}, pod.id, pod.netnsCookie,
-			}
-			if feM.feAddr.AddrCluster.Is4() && be.AddrCluster.Is4() {
-				if option.Config.EnableIPv4 {
-					bes4 = append(bes4, be)
+	for _, feM := range config.frontendMappings {
+		for _, pod := range pods {
+			var (
+				bes4 []backend
+				bes6 []backend
+			)
+			for _, ip := range pod.ips {
+				beIP := net.ParseIP(ip)
+				if beIP == nil {
+					continue
 				}
-			} else if feM.feAddr.AddrCluster.Is6() && be.AddrCluster.Is6() {
-				if option.Config.EnableIPv6 {
-					bes6 = append(bes6, be)
+				be := backend{
+					lb.L3n4Addr{
+						AddrCluster: cmtypes.MustParseAddrCluster(ip),
+						L4Addr: lb.L4Addr{
+							Protocol: bePort.l4Addr.Protocol,
+							Port:     bePort.l4Addr.Port,
+						},
+					}, pod.id, pod.netnsCookie,
 				}
+				if feM.feAddr.AddrCluster.Is4() && be.AddrCluster.Is4() {
+					if option.Config.EnableIPv4 {
+						bes4 = append(bes4, be)
+					}
+				} else if feM.feAddr.AddrCluster.Is6() && be.AddrCluster.Is6() {
+					if option.Config.EnableIPv6 {
+						bes6 = append(bes6, be)
+					}
+				}
+			}
+			if len(bes4) > 0 {
+				rpm.updateFrontendMapping(config, feM, pod.id, bes4)
+			} else if len(bes6) > 0 {
+				rpm.updateFrontendMapping(config, feM, pod.id, bes6)
 			}
 		}
-		if len(bes4) > 0 {
-			rpm.updateFrontendMapping(config, feM, pod.id, bes4)
-		} else if len(bes6) > 0 {
-			rpm.updateFrontendMapping(config, feM, pod.id, bes6)
-		}
+		rpm.upsertPolicyMapping(config, feM)
 	}
-	rpm.upsertPolicyMapping(config, feM)
 }
 
 // processConfigWithNamedPorts upserts policy config frontends to the corresponding
