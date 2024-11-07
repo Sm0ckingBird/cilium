@@ -677,7 +677,7 @@ func (s *Service) createSVCInfoIfNotExist(p *lb.SVC) (*svcInfo, bool, bool,
 		}
 		// Local-redirect service can only override clusterIP service type or itself.
 		if p.Type == lb.SVCTypeLocalRedirect &&
-			(svc.svcType != lb.SVCTypeClusterIP && svc.svcType != lb.SVCTypeLocalRedirect) {
+			(svc.svcType != lb.SVCTypeClusterIP && svc.svcType != lb.SVCTypeLocalRedirect && svc.svcType != lb.SVCTypeExternalIPs) {
 			err := fmt.Errorf("skip local-redirect service for "+
 				"frontend %v as it overlaps with svc %v of type %v",
 				p.Frontend, svc.svcName, svc.svcType)

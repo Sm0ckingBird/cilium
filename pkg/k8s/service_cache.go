@@ -127,34 +127,66 @@ func (s *ServiceCache) GetServiceIP(svcID ServiceID) *loadbalancer.L3n4Addr {
 	return nil
 }
 
+func getServiceIPsWithType(svc *Service, svcType loadbalancer.SVCType) []net.IP {
+	var ips []net.IP
+
+	if svcType == loadbalancer.SVCTypeExternalIPs {
+		i := 0
+		ips = make([]net.IP, len(svc.K8sExternalIPs))
+		for _, ip := range svc.K8sExternalIPs {
+			ips[i] = ip
+			i += 1
+		}
+	} else {
+		ips = make([]net.IP, len(svc.FrontendIPs))
+		copy(ips, svc.FrontendIPs)
+	}
+
+	return ips
+}
+
 // GetServiceFrontendIP returns the frontend IP (aka clusterIP) for the given service with type.
-func (s *ServiceCache) GetServiceFrontendIP(svcID ServiceID, svcType loadbalancer.SVCType) net.IP {
+func (s *ServiceCache) GetServiceK8sExternalIPs(svcID ServiceID) []net.IP {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	svc := s.services[svcID]
-	if svc == nil || svc.Type != svcType || len(svc.FrontendIPs) == 0 {
+	if svc == nil {
+		return make([]net.IP, 0)
+	}
+
+	return getServiceIPsWithType(svc, loadbalancer.SVCTypeExternalIPs)
+}
+
+// GetServiceFrontendIP returns the frontend IP (aka clusterIP) for the given service with type.
+func (s *ServiceCache) GetServiceFrontendIP(svcID ServiceID) net.IP {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	svc := s.services[svcID]
+	if svc == nil {
 		return nil
 	}
 
-	return ip.GetIPFromListByFamily(svc.FrontendIPs, option.Config.EnableIPv4)
+	return ip.GetIPFromListByFamily(getServiceIPsWithType(svc, loadbalancer.SVCTypeClusterIP), option.Config.EnableIPv4)
 }
 
-// GetServiceAddrsWithType returns a map of all the ports and slice of L3n4Addr that are backing the
+// GetServiceAddrs returns a map of all the ports and slice of L3n4Addr that are backing the
 // given Service ID with given type. It also returns the number of frontend IPs associated with the service.
 // Note: The returned IPs are with External scope.
-func (s *ServiceCache) GetServiceAddrsWithType(svcID ServiceID,
-	svcType loadbalancer.SVCType) (map[loadbalancer.FEPortName][]*loadbalancer.L3n4Addr, int) {
+func (s *ServiceCache) GetServiceAddrs(svcID ServiceID) (map[loadbalancer.FEPortName][]*loadbalancer.L3n4Addr, int) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	svc := s.services[svcID]
-	if svc == nil || svc.Type != svcType || len(svc.FrontendIPs) == 0 {
+	if svc == nil {
 		return nil, 0
 	}
 
+	ips := getServiceIPsWithType(svc, loadbalancer.SVCTypeClusterIP)
+	ips = append(ips, getServiceIPsWithType(svc, loadbalancer.SVCTypeExternalIPs)...)
+
 	addrsByPort := make(map[loadbalancer.FEPortName][]*loadbalancer.L3n4Addr)
 	for pName, l4Addr := range svc.Ports {
-		addrs := make([]*loadbalancer.L3n4Addr, 0, len(svc.FrontendIPs))
-		for _, feIP := range svc.FrontendIPs {
+		addrs := make([]*loadbalancer.L3n4Addr, 0, len(ips))
+		for _, feIP := range ips {
 			if isValidServiceFrontendIP(feIP) {
 				addrs = append(addrs, loadbalancer.NewL3n4Addr(l4Addr.Protocol, feIP, l4Addr.Port, loadbalancer.ScopeExternal))
 			}
@@ -163,7 +195,7 @@ func (s *ServiceCache) GetServiceAddrsWithType(svcID ServiceID,
 		addrsByPort[pName] = addrs
 	}
 
-	return addrsByPort, len(svc.FrontendIPs)
+	return addrsByPort, len(ips)
 }
 
 // GetEndpointsOfService returns all the endpoints that correlate with a
@@ -478,7 +510,9 @@ func (s *ServiceCache) filterEndpoints(localEndpoints *Endpoints, svc *Service) 
 // returns a boolean that indicates whether the service is ready to be plumbed,
 // this is true if:
 // A local endpoints resource is present. Regardless whether the
-//    endpoints resource contains actual backends or not.
+//
+//	endpoints resource contains actual backends or not.
+//
 // OR Remote endpoints exist which correlate to the service.
 func (s *ServiceCache) correlateEndpoints(id ServiceID) (*Endpoints, bool) {
 	endpoints := newEndpoints()
