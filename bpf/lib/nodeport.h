@@ -787,7 +787,7 @@ static __always_inline int nodeport_lb6(struct __ctx_buff *ctx,
 	union macaddr smac = {}, *mac;
 	bool backend_local;
 	__u32 monitor = 0;
-	bool isExtIP = false;
+	bool isExtIP __maybe_unused = false;
 
 	cilium_capture_in(ctx);
 
@@ -2020,7 +2020,7 @@ drop_err:
 }
 
 #ifdef ENABLE_DSR
-static __always_inline nodeport_ipv4_dsr(struct __ctx_buff *ctx)
+static __always_inline int nodeport_ipv4_dsr(struct __ctx_buff *ctx)
 {
 	void *data, *data_end;
 	int ret = 0, ohead = 0;
@@ -2089,7 +2089,7 @@ static __always_inline int nodeport_lb4(struct __ctx_buff *ctx,
 	struct ct_state ct_state_new = {};
 	union macaddr smac = {}, *mac;
 	bool backend_local;
-	bool externalip_svc;
+	bool externalip_svc __maybe_unused;
 	__u32 monitor __maybe_unused = 0;
 	unsigned int backendip __maybe_unused = 0;
 
